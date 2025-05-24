@@ -61,12 +61,14 @@ class BridgeManager:
             os.chdir(project_root)
             
             try:
-                logger.info("Initializing JSPyBridge", cwd=os.getcwd())
+                logger.info("Initializing JSPyBridge", cwd=os.getcwd(), project_root=project_root)
                 
-                # Try requiring from current directory
-                path_module = require('path')
-                bot_script_path = path_module.resolve('./src/minecraft/index.js')
-                logger.info("Resolved bot script path", path=bot_script_path)
+                # Verify we're in the right directory and the file exists
+                index_js_path = os.path.join(project_root, "src", "minecraft", "index.js")
+                if not os.path.exists(index_js_path):
+                    raise FileNotFoundError(f"Bot script not found at {index_js_path}")
+                
+                logger.info("Bot script exists", path=index_js_path)
                 
                 # Import the bot module
                 self.bot_module = require('./src/minecraft/index.js')
