@@ -40,7 +40,7 @@ async function startBot(options = {}) {
                 await Promise.race([
                     eventClient.connect(),
                     new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Event client connection timeout')), 5000)
+                        setTimeout(() => reject(new Error('Event client connection timeout')), 10000)
                     )
                 ]);
                 

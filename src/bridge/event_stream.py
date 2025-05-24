@@ -48,7 +48,7 @@ class EventStream:
 
         logger.info("Event stream server started")
 
-    async def _handle_client(self, websocket, path):
+    async def _handle_client(self, websocket):
         """Handle a WebSocket client connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"Client connected: {client_id}")

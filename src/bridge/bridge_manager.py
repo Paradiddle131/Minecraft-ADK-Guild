@@ -51,11 +51,9 @@ class BridgeManager:
     async def initialize(self, bot_script_path: str = None):
         """Initialize the bridge and start the Mineflayer bot"""
         try:
-            # Use pythonia directly to avoid path issues
             import os
             from javascript import require, On, Once, AsyncTask, once, off
             
-            # Change working directory to project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             original_cwd = os.getcwd()
             os.chdir(project_root)
@@ -63,54 +61,84 @@ class BridgeManager:
             try:
                 logger.info("Initializing JSPyBridge", cwd=os.getcwd(), project_root=project_root)
                 
-                # Verify we're in the right directory and the file exists
                 index_js_path = os.path.join(project_root, "src", "minecraft", "index.js")
                 if not os.path.exists(index_js_path):
                     raise FileNotFoundError(f"Bot script not found at {index_js_path}")
                 
                 logger.info("Bot script exists", path=index_js_path)
                 
-                # Import the bot module using absolute path
                 self.bot_module = require(index_js_path)
             finally:
                 os.chdir(original_cwd)
 
-            # Start bot with event client
-            bot_instance = await self.bot_module.startBot()
-            self.bot = bot_instance.bot
-            self.event_client = bot_instance.eventClient
+            await self._start_event_server()
+            await asyncio.sleep(0.5)
 
-            # Set up event listeners
+            logger.info("Starting bot and waiting for readiness...")
+            
+            bot_result = self.bot_module.startBot(timeout=60000)
+            
+            logger.info("Waiting for bot initialization...")
+            await asyncio.wait_for(self._wait_for_bot_ready(bot_result), timeout=30)
+            
+            self.bot = bot_result.bot
+            self.event_client = bot_result.eventClient
+            
+            if self.bot and hasattr(self.bot, '_client') and self.bot._client:
+                logger.info("Waiting for bot to spawn in world...")
+                await asyncio.wait_for(self._wait_for_bot_spawn(), timeout=30)
+            else:
+                logger.info("Bot ready but no server connection (server may not be running)")
+            
+            logger.info(f"Bot ready: bot={self.bot is not None}, eventClient={self.event_client is not None}")
+
             await self._setup_event_listeners()
 
-            # Start command processor
             self._event_loop = asyncio.get_event_loop()
             self._command_processor_task = asyncio.create_task(self._process_command_queue())
 
             self.is_connected = True
             logger.info("JSPyBridge initialized successfully")
-
-            # The bot is already created and spawned by startBot()
             logger.info("Bot initialized and spawned")
 
         except Exception as e:
             logger.error("Failed to initialize bridge", error=str(e))
             raise
 
-    async def _wait_for_spawn(self, bot, timeout: int = 30):
+    async def _start_event_server(self):
+        """Start the WebSocket event server for JavaScript clients"""
+        from ..bridge.event_stream import EventStream
+        
+        self.event_stream = EventStream(port=8765)
+        await self.event_stream.start()
+        logger.info("Event stream server started on port 8765")
+
+    async def _wait_for_bot_ready(self, bot_result):
+        """Wait for bot initialization to complete"""
+        while True:
+            try:
+                if hasattr(bot_result, 'bot') and bot_result.bot is not None:
+                    break
+            except:
+                pass
+            await asyncio.sleep(0.1)
+
+    async def _wait_for_bot_spawn(self):
         """Wait for bot to spawn in the world"""
         spawn_event = asyncio.Event()
 
         def on_spawn():
             spawn_event.set()
 
-        bot.once("spawn", on_spawn)
+        from javascript import On
+        spawn_listener = On(self.bot, "spawn")(on_spawn)
 
         try:
-            await asyncio.wait_for(spawn_event.wait(), timeout=timeout)
+            await spawn_event.wait()
             logger.info("Bot spawned successfully")
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Bot failed to spawn within {timeout} seconds")
+        finally:
+            if hasattr(spawn_listener, 'destroy'):
+                spawn_listener.destroy()
 
     async def _setup_event_listeners(self):
         """Set up event listeners for bot events"""
