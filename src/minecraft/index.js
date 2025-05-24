@@ -36,13 +36,30 @@ async function startBot(options = {}) {
                     parseInt(process.env.BRIDGE_PORT) || 8765
                 );
 
-                // Connect event client with timeout
-                await Promise.race([
-                    eventClient.connect(),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Event client connection timeout')), 10000)
-                    )
-                ]);
+                // Connect event client with longer timeout and retry
+                let connected = false;
+                let attempts = 0;
+                const maxAttempts = 3;
+                
+                while (!connected && attempts < maxAttempts) {
+                    try {
+                        await Promise.race([
+                            eventClient.connect(),
+                            new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Event client connection timeout')), 15000)
+                            )
+                        ]);
+                        connected = true;
+                    } catch (error) {
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            console.log(`Event client connection attempt ${attempts} failed, retrying in 2s...`);
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                        } else {
+                            throw error;
+                        }
+                    }
+                }
                 
                 console.log('Event client connected');
 

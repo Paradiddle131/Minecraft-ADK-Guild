@@ -72,11 +72,16 @@ class BridgeManager:
                 os.chdir(original_cwd)
 
             await self._start_event_server()
-            await asyncio.sleep(0.5)
+            # Give event server time to be ready for connections
+            await asyncio.sleep(2.0)
 
             logger.info("Starting bot and waiting for readiness...")
             
-            bot_result = self.bot_module.startBot(timeout=60000)
+            # Start bot without event client initially to avoid timing issues
+            bot_result = self.bot_module.startBot({
+                'enableEventClient': False,
+                'timeout': 60000
+            })
             
             logger.info("Waiting for bot initialization...")
             await asyncio.wait_for(self._wait_for_bot_ready(bot_result), timeout=30)
