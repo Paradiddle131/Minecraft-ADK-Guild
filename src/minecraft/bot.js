@@ -79,8 +79,8 @@ class MinecraftBot {
         // Configure pathfinder movements
         this.movements = new Movements(this.bot);
         this.movements.canDig = true;
-        this.movements.scafoldingBlocks.add(this.bot.registry.itemsByName.cobblestone.id);
-        this.movements.scafoldingBlocks.add(this.bot.registry.itemsByName.dirt.id);
+        this.movements.scaffoldingBlocks.add(this.bot.registry.itemsByName.cobblestone.id);
+        this.movements.scaffoldingBlocks.add(this.bot.registry.itemsByName.dirt.id);
 
         this.bot.pathfinder.setMovements(this.movements);
         logger.info('Pathfinder configured');
