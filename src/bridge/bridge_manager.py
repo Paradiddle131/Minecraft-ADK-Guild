@@ -45,6 +45,7 @@ class BridgeManager:
         self.command_queue = asyncio.PriorityQueue(maxsize=self.config.event_queue_size)
         self.pending_commands = {}
         self.is_connected = False
+        self.is_spawned = False
         self._event_loop = None
         self._command_processor_task = None
 
@@ -72,30 +73,38 @@ class BridgeManager:
                 os.chdir(original_cwd)
 
             await self._start_event_server()
-            # Give event server time to be ready for connections
             await asyncio.sleep(2.0)
 
             logger.info("Starting bot and waiting for readiness...")
             
-            # Start bot without event client initially to avoid timing issues
             bot_result = self.bot_module.startBot({
-                'enableEventClient': False,
+                'enableEventClient': True,
                 'timeout': 60000
-            })
+            }, timeout=90000)
             
-            logger.info("Waiting for bot initialization...")
-            await asyncio.wait_for(self._wait_for_bot_ready(bot_result), timeout=30)
+            wait_count = 0
+            while wait_count < 300:
+                if hasattr(bot_result, 'bot') and bot_result.bot is not None:
+                    break
+                await asyncio.sleep(0.1)
+                wait_count += 1
+            
+            if not hasattr(bot_result, 'bot') or bot_result.bot is None:
+                logger.error("Bot initialization failed - no bot object returned")
+                raise TimeoutError("Bot failed to initialize - check if Minecraft server is running on localhost:25565")
             
             self.bot = bot_result.bot
             self.event_client = bot_result.eventClient
             
-            if self.bot and hasattr(self.bot, '_client') and self.bot._client:
-                logger.info("Waiting for bot to spawn in world...")
-                await asyncio.wait_for(self._wait_for_bot_spawn(), timeout=30)
-            else:
-                logger.info("Bot ready but no server connection (server may not be running)")
+            logger.info("Waiting for bot to spawn in world...")
+            self.is_spawned = await self._wait_for_spawn_with_timeout()
             
-            logger.info(f"Bot ready: bot={self.bot is not None}, eventClient={self.event_client is not None}")
+            if self.is_spawned:
+                logger.info("Bot spawned successfully and ready to use")
+            else:
+                logger.warning("Bot created but not spawned - server might not be running")
+            
+            logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}, eventClient={self.event_client is not None}")
 
             await self._setup_event_listeners()
 
@@ -128,8 +137,12 @@ class BridgeManager:
                 pass
             await asyncio.sleep(0.1)
 
-    async def _wait_for_bot_spawn(self):
-        """Wait for bot to spawn in the world"""
+    async def _wait_for_spawn_with_timeout(self, timeout: float = 10.0) -> bool:
+        """Wait for bot to spawn in the world with timeout
+        
+        Returns:
+            bool: True if spawned, False if timeout
+        """
         spawn_event = asyncio.Event()
 
         def on_spawn():
@@ -139,8 +152,12 @@ class BridgeManager:
         spawn_listener = On(self.bot, "spawn")(on_spawn)
 
         try:
-            await spawn_event.wait()
+            await asyncio.wait_for(spawn_event.wait(), timeout=timeout)
             logger.info("Bot spawned successfully")
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(f"Bot spawn timeout after {timeout}s - server may not be running")
+            return False
         finally:
             if hasattr(spawn_listener, 'destroy'):
                 spawn_listener.destroy()
@@ -167,14 +184,12 @@ class BridgeManager:
         """Handle events from the Minecraft bot"""
         logger.debug(f"Received event: {event_type}", args=args)
 
-        # Convert args to serializable format
         event_data = {
             "type": event_type,
             "timestamp": datetime.now().isoformat(),
             "data": self._serialize_args(args),
         }
 
-        # Call registered handlers
         if event_type in self.event_handlers:
             for handler in self.event_handlers[event_type]:
                 try:
@@ -187,7 +202,6 @@ class BridgeManager:
         serialized = []
         for arg in args:
             try:
-                # Try to convert to dict if it's an object
                 if hasattr(arg, "__dict__"):
                     serialized.append(arg.__dict__)
                 else:
@@ -207,6 +221,9 @@ class BridgeManager:
         """Execute a command on the bot"""
         if not self.is_connected:
             raise RuntimeError("Bridge is not connected")
+        
+        if not self.is_spawned:
+            raise RuntimeError("Bot is not connected to Minecraft server")
 
         command_id = f"cmd_{datetime.now().timestamp()}"
         future = asyncio.Future()
@@ -233,7 +250,6 @@ class BridgeManager:
 
         while True:
             try:
-                # Collect commands for batching
                 while len(batch) < self.config.batch_size:
                     try:
                         _, command = await asyncio.wait_for(self.command_queue.get(), timeout=0.1)
@@ -241,12 +257,11 @@ class BridgeManager:
                     except asyncio.TimeoutError:
                         break
 
-                # Execute batch if we have commands
                 if batch:
                     await self._execute_batch(batch)
                     batch = []
 
-                await asyncio.sleep(0.01)  # Small delay to prevent CPU spinning
+                await asyncio.sleep(0.01)
 
             except Exception as e:
                 logger.error("Error in command processor", error=str(e))
