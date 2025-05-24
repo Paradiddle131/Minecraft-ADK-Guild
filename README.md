@@ -63,9 +63,9 @@ The diagram above illustrates how data flows through the system:
 
 ### POC Success Criteria
 
-✅ **Resource Gathering**: Agent collects 64 wood blocks autonomously  
-✅ **Construction**: Builder creates 5x5x3 shelter from blueprint  
-✅ **Coordination**: Agents delegate tasks and share resources  
+✅ **Resource Gathering**: Agent collects 64 wood blocks autonomously
+✅ **Construction**: Builder creates 5x5x3 shelter from blueprint
+✅ **Coordination**: Agents delegate tasks and share resources
 ✅ **Recovery**: System handles failures gracefully
 
 ## 🛠️ Technical Stack
@@ -93,7 +93,7 @@ The diagram above illustrates how data flows through the system:
 ## 🚦 Getting Started
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.11+
 - Node.js 18+
 - Minecraft Java Edition server
 - Docker (optional)
@@ -133,7 +133,7 @@ The system includes a real-time dashboard showing:
 ## 🔮 Future Enhancements
 
 - **Combat Agent**: Defend against threats
-- **Farming Agent**: Automated food production  
+- **Farming Agent**: Automated food production
 - **Trading Agent**: Economic interactions
 - **Voice Control**: Natural language commands
 - **Multi-server**: Coordinate across servers
