@@ -51,21 +51,26 @@ class BridgeManager:
     async def initialize(self, bot_script_path: str = None):
         """Initialize the bridge and start the Mineflayer bot"""
         try:
-            # Set working directory and use relative path
+            # Use pythonia directly to avoid path issues
             import os
+            from javascript import require, On, Once, AsyncTask, once, off
             
-            # Change to project root directory for JSPyBridge
+            # Change working directory to project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             original_cwd = os.getcwd()
+            os.chdir(project_root)
             
             try:
-                os.chdir(project_root)
-                logger.info("Initializing JSPyBridge", cwd=project_root)
+                logger.info("Initializing JSPyBridge", cwd=os.getcwd())
                 
-                # Import the bot module using relative path from project root
-                self.bot_module = require("./src/minecraft/index")
+                # Try requiring from current directory
+                path_module = require('path')
+                bot_script_path = path_module.resolve('./src/minecraft/index.js')
+                logger.info("Resolved bot script path", path=bot_script_path)
+                
+                # Import the bot module
+                self.bot_module = require('./src/minecraft/index.js')
             finally:
-                # Restore original working directory
                 os.chdir(original_cwd)
 
             # Start bot with event client
