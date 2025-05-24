@@ -30,7 +30,7 @@ class WorldState(Base):
     dimension = Column(String, default="overworld")
     nearby_players = Column(JSON)
     inventory = Column(JSON)
-    metadata = Column(JSON)
+    extra_data = Column(JSON)
 
 
 class TaskState(Base):
@@ -103,7 +103,7 @@ class StateManager:
                 dimension=world_data.get("dimension", "overworld"),
                 nearby_players=world_data.get("players", []),
                 inventory=world_data.get("inventory", {}),
-                metadata=world_data.get("metadata", {}),
+                extra_data=world_data.get("metadata", {}),
             )
             session.add(snapshot)
             await session.commit()
@@ -139,7 +139,7 @@ class StateManager:
                     "dimension": row.dimension,
                     "players": row.nearby_players,
                     "inventory": row.inventory,
-                    "metadata": row.metadata,
+                    "metadata": row.extra_data,
                     "timestamp": row.timestamp.isoformat(),
                 }
 
