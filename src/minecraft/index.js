@@ -8,13 +8,14 @@ const dotenv = require('dotenv');
 // Load environment variables
 dotenv.config();
 
-// Main function to start bot with event streaming
+// Main function to start bot with optional event streaming
 async function startBot(options = {}) {
     const defaultOptions = {
         host: process.env.MC_SERVER_HOST || 'localhost',
         port: parseInt(process.env.MC_SERVER_PORT) || 25565,
         username: process.env.MC_BOT_USERNAME || 'MinecraftAgent',
-        auth: process.env.MC_BOT_AUTH || 'offline'
+        auth: process.env.MC_BOT_AUTH || 'offline',
+        enableEventClient: true  // Can be disabled for standalone mode
     };
 
     const botOptions = { ...defaultOptions, ...options };
@@ -26,17 +27,32 @@ async function startBot(options = {}) {
         const bot = await createBot(botOptions);
         console.log('Bot created successfully');
 
-        // Create event client
-        const eventClient = new EventClient(
-            parseInt(process.env.BRIDGE_PORT) || 8765
-        );
+        let eventClient = null;
 
-        // Connect event client
-        await eventClient.connect();
-        console.log('Event client connected');
+        // Optionally create event client
+        if (botOptions.enableEventClient) {
+            try {
+                eventClient = new EventClient(
+                    parseInt(process.env.BRIDGE_PORT) || 8765
+                );
 
-        // Integrate bot with event client
-        integrateEventClient(bot, eventClient);
+                // Connect event client with timeout
+                await Promise.race([
+                    eventClient.connect(),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Event client connection timeout')), 5000)
+                    )
+                ]);
+                
+                console.log('Event client connected');
+
+                // Integrate bot with event client
+                integrateEventClient(bot, eventClient);
+            } catch (error) {
+                console.warn('Failed to connect to event client, running without event streaming:', error.message);
+                eventClient = null;
+            }
+        }
 
         // Return both for external control
         return { bot, eventClient };
@@ -49,7 +65,8 @@ async function startBot(options = {}) {
 
 // For direct Node.js execution
 if (require.main === module) {
-    startBot().catch(console.error);
+    // Run in standalone mode without event client
+    startBot({ enableEventClient: false }).catch(console.error);
 }
 
 module.exports = { startBot, createBot };
