@@ -30,5 +30,15 @@ uv.lock
 # logs
 logs/
 
+# Code quality tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Pre-commit
+.pre-commit-cache/
+
 # ai_docs
 ai_docs/
