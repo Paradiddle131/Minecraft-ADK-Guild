@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+*.sqlite
+*.db
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE specific
+.idea/
+.vscode/
+
+# Dependency management
+uv.lock
+
+# logs
+logs/
+
+# ai_docs
+ai_docs/
+
