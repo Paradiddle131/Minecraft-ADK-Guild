@@ -43,7 +43,7 @@ class MinecraftBot {
 
     async createBot() {
         logger.info('Creating Mineflayer bot', this.options);
-        
+
         this.bot = mineflayer.createBot({
             host: this.options.host,
             port: this.options.port,
@@ -65,9 +65,9 @@ class MinecraftBot {
                 this.setupPathfinder();
                 resolve();
             });
-            
+
             this.bot.once('error', reject);
-            
+
             // Timeout after 30 seconds
             setTimeout(() => reject(new Error('Spawn timeout')), 30000);
         });
@@ -81,7 +81,7 @@ class MinecraftBot {
         this.movements.canDig = true;
         this.movements.scafoldingBlocks.add(this.bot.registry.itemsByName.cobblestone.id);
         this.movements.scafoldingBlocks.add(this.bot.registry.itemsByName.dirt.id);
-        
+
         this.bot.pathfinder.setMovements(this.movements);
         logger.info('Pathfinder configured');
     }
@@ -92,7 +92,7 @@ class MinecraftBot {
             'chat', 'whisper', 'actionBar', 'title',
             'health', 'breath', 'spawn', 'death', 'respawn',
             'playerJoined', 'playerLeft', 'playerUpdated',
-            'blockUpdate', 'chunkColumnLoad', 
+            'blockUpdate', 'chunkColumnLoad',
             'entitySpawn', 'entityGone', 'entityMoved',
             'kicked', 'error', 'end'
         ];
@@ -119,14 +119,14 @@ class MinecraftBot {
         try {
             // Convert Minecraft objects to serializable format
             const serializedArgs = this.serializeArgs(args);
-            
+
             // Emit to Python bridge
             this.events.emit('minecraft_event', {
                 type: eventName,
                 timestamp: new Date().toISOString(),
                 data: serializedArgs
             });
-            
+
             logger.debug(`Event: ${eventName}`, { args: serializedArgs });
         } catch (error) {
             logger.error(`Error handling event ${eventName}:`, error);
@@ -136,7 +136,7 @@ class MinecraftBot {
     serializeArgs(args) {
         return args.map(arg => {
             if (arg === null || arg === undefined) return arg;
-            
+
             // Handle special Minecraft types
             if (arg.username !== undefined) {
                 // Player object
@@ -147,7 +147,7 @@ class MinecraftBot {
                     position: arg.entity?.position
                 };
             }
-            
+
             if (arg.position !== undefined && arg.type !== undefined) {
                 // Entity object
                 return {
@@ -159,12 +159,12 @@ class MinecraftBot {
                     pitch: arg.pitch
                 };
             }
-            
+
             if (arg.x !== undefined && arg.y !== undefined && arg.z !== undefined) {
                 // Vec3 object
                 return { x: arg.x, y: arg.y, z: arg.z };
             }
-            
+
             // Default: try to convert to plain object
             try {
                 return JSON.parse(JSON.stringify(arg));
@@ -177,13 +177,13 @@ class MinecraftBot {
     // Command execution methods
     async executeCommand(command) {
         const { method, args, id } = command;
-        
+
         try {
             logger.debug(`Executing command: ${method}`, args);
-            
+
             // Route to appropriate handler
             const result = await this.routeCommand(method, args);
-            
+
             return {
                 id,
                 success: true,
@@ -207,38 +207,38 @@ class MinecraftBot {
                 await this.bot.pathfinder.goto(goal);
                 return { position: { x, y, z } };
             },
-            
+
             'pathfinder.follow': async ({ username, range = 3 }) => {
                 const player = this.bot.players[username];
                 if (!player) throw new Error(`Player ${username} not found`);
-                
+
                 const goal = new goals.GoalFollow(player.entity, range);
                 this.bot.pathfinder.setGoal(goal, true);
                 return { following: username };
             },
-            
+
             'pathfinder.stop': async () => {
                 this.bot.pathfinder.stop();
                 return { stopped: true };
             },
-            
+
             // Block interaction
             'dig': async ({ x, y, z }) => {
                 const block = this.bot.blockAt(new Vec3(x, y, z));
                 if (!block) throw new Error('No block at position');
-                
+
                 await this.bot.dig(block);
                 return { dug: true, block: block.name };
             },
-            
+
             'placeBlock': async ({ x, y, z, face = 'top' }) => {
                 const referenceBlock = this.bot.blockAt(new Vec3(x, y, z));
                 const faceVector = this.getFaceVector(face);
-                
+
                 await this.bot.placeBlock(referenceBlock, faceVector);
                 return { placed: true };
             },
-            
+
             // Inventory
             'inventory.items': async () => {
                 return this.bot.inventory.items().map(item => ({
@@ -247,26 +247,26 @@ class MinecraftBot {
                     slot: item.slot
                 }));
             },
-            
+
             'inventory.equip': async ({ item, destination = 'hand' }) => {
                 const itemObj = this.bot.inventory.items().find(i => i.name === item);
                 if (!itemObj) throw new Error(`Item ${item} not found`);
-                
+
                 await this.bot.equip(itemObj, destination);
                 return { equipped: item };
             },
-            
+
             // Chat
             'chat': async ({ message }) => {
                 this.bot.chat(message);
                 return { sent: true };
             },
-            
+
             // Information queries
             'entity.position': async () => {
                 return this.bot.entity.position;
             },
-            
+
             'entity.health': async () => {
                 return {
                     health: this.bot.health,
@@ -274,7 +274,7 @@ class MinecraftBot {
                     saturation: this.bot.foodSaturation
                 };
             },
-            
+
             'world.getBlock': async ({ x, y, z }) => {
                 const block = this.bot.blockAt(new Vec3(x, y, z));
                 return {
@@ -283,17 +283,17 @@ class MinecraftBot {
                     hardness: block?.hardness
                 };
             },
-            
+
             'world.findBlocks': async ({ name, maxDistance = 64, count = 1 }) => {
                 const blockType = this.bot.registry.blocksByName[name];
                 if (!blockType) throw new Error(`Unknown block type: ${name}`);
-                
+
                 const blocks = this.bot.findBlocks({
                     matching: blockType.id,
                     maxDistance,
                     count
                 });
-                
+
                 return blocks.map(pos => ({ x: pos.x, y: pos.y, z: pos.z }));
             }
         };
@@ -302,7 +302,7 @@ class MinecraftBot {
         if (!handler) {
             throw new Error(`Unknown command: ${method}`);
         }
-        
+
         return await handler(args);
     }
 

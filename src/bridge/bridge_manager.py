@@ -2,14 +2,12 @@
 JSPyBridge Manager - Handles Python to JavaScript communication with Mineflayer
 """
 import asyncio
-import json
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 import structlog
-from javascript import globalThis, require
+from javascript import require
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = structlog.get_logger(__name__)
@@ -141,7 +139,7 @@ class BridgeManager:
                 try:
                     handler(event_data)
                 except Exception as e:
-                    logger.error(f"Error in event handler", event=event_type, error=str(e))
+                    logger.error("Error in event handler", event=event_type, error=str(e))
 
     def _serialize_args(self, args):
         """Convert JavaScript objects to Python-serializable format"""
@@ -153,7 +151,7 @@ class BridgeManager:
                     serialized.append(arg.__dict__)
                 else:
                     serialized.append(str(arg))
-            except:
+            except Exception:
                 serialized.append(str(arg))
         return serialized
 
@@ -185,7 +183,7 @@ class BridgeManager:
             result = await asyncio.wait_for(future, timeout=self.config.command_timeout / 1000)
             return result
         except asyncio.TimeoutError:
-            logger.error(f"Command timeout", method=method, args=kwargs)
+            logger.error("Command timeout", method=method, args=kwargs)
             raise TimeoutError(f"Command {method} timed out")
 
     async def _process_command_queue(self):
@@ -221,14 +219,14 @@ class BridgeManager:
                 if command.callback:
                     command.callback(result)
             except Exception as e:
-                logger.error(f"Command execution failed", command=command.method, error=str(e))
+                logger.error("Command execution failed", command=command.method, error=str(e))
                 if command.callback:
                     command.callback({"error": str(e)})
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))
     async def _execute_single_command(self, command: Command) -> Any:
         """Execute a single command with retry logic"""
-        logger.debug(f"Executing command", method=command.method, args=command.args)
+        logger.debug("Executing command", method=command.method, args=command.args)
 
         # Get the method from bot
         method_parts = command.method.split(".")

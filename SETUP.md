@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Python 3.11 or higher
-- Node.js 18 or higher  
+- Node.js 18 or higher
 - Docker and Docker Compose
 - Git
 
@@ -74,7 +74,7 @@ python test_setup.py
 
 You should see:
 - ✅ Core imports successful
-- ✅ External dependencies imported successfully  
+- ✅ External dependencies imported successfully
 - ✅ Minecraft server is reachable
 - ⚠️ Redis (optional)
 

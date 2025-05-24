@@ -41,7 +41,7 @@ minecraft-agent = "scripts.run_agent:main"
 line-length = 100
 target-version = "py311"
 select = ["E", "F", "I", "N", "W"]
-ignore = ["E501"]
+ignore = ["E501", "E402"]
 
 [tool.black]
 line-length = 100
@@ -57,4 +57,3 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
-

@@ -16,31 +16,31 @@ export async function startBot(options = {}) {
         username: process.env.MC_BOT_USERNAME || 'MinecraftAgent',
         auth: process.env.MC_BOT_AUTH || 'offline'
     };
-    
+
     const botOptions = { ...defaultOptions, ...options };
-    
+
     console.log('Starting Minecraft bot with options:', botOptions);
-    
+
     try {
         // Create bot
         const bot = await createBot(botOptions);
         console.log('Bot created successfully');
-        
+
         // Create event client
         const eventClient = new EventClient(
             parseInt(process.env.BRIDGE_PORT) || 8765
         );
-        
+
         // Connect event client
         await eventClient.connect();
         console.log('Event client connected');
-        
+
         // Integrate bot with event client
         integrateEventClient(bot, eventClient);
-        
+
         // Return both for external control
         return { bot, eventClient };
-        
+
     } catch (error) {
         console.error('Failed to start bot:', error);
         throw error;

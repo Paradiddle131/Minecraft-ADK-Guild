@@ -2,11 +2,11 @@
 Simple Minecraft Agent - POC for single agent with Mineflayer tools
 """
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import structlog
 from google.adk.agents import LlmAgent
-from google.adk.sessions import InMemorySessionManager, Session
+from google.adk.sessions import InMemorySessionManager
 
 from ..bridge.bridge_manager import BridgeConfig, BridgeManager
 from ..bridge.event_stream import EventProcessor, EventStream

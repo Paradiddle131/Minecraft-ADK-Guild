@@ -26,7 +26,7 @@ cp .env.example .env
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Install Node.js dependencies  
+# Install Node.js dependencies
 npm install
 ```
 
@@ -117,11 +117,11 @@ from src.agents.simple_agent import SimpleMinecraftAgent
 async def main():
     agent = SimpleMinecraftAgent(name="CustomBot")
     await agent.initialize()
-    
+
     # Your custom logic here
     response = await agent.process_command("gather 64 oak logs")
     print(response)
-    
+
     await agent.cleanup()
 
 if __name__ == "__main__":

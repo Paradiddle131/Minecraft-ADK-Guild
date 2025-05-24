@@ -30,35 +30,35 @@ export class EventClient {
     async connect() {
         try {
             logger.info(`Connecting to event stream server on port ${this.port}`);
-            
+
             this.ws = new WebSocket(`ws://localhost:${this.port}`);
-            
+
             return new Promise((resolve, reject) => {
                 this.ws.on('open', () => {
                     logger.info('Connected to event stream server');
                     this.isConnected = true;
                     this.reconnectAttempts = 0;
-                    
+
                     // Send queued events
                     this.flushEventQueue();
-                    
+
                     // Start heartbeat
                     this.startHeartbeat();
-                    
+
                     resolve();
                 });
-                
+
                 this.ws.on('error', (error) => {
                     logger.error('WebSocket error:', error);
                     reject(error);
                 });
-                
+
                 this.ws.on('close', () => {
                     logger.warn('Disconnected from event stream server');
                     this.isConnected = false;
                     this.handleReconnect();
                 });
-                
+
                 this.ws.on('message', (data) => {
                     this.handleMessage(data);
                 });
@@ -72,7 +72,7 @@ export class EventClient {
     handleMessage(data) {
         try {
             const message = JSON.parse(data);
-            
+
             switch (message.type) {
                 case 'command':
                     this.handleCommand(message.data);
@@ -127,7 +127,7 @@ export class EventClient {
 
     flushEventQueue() {
         logger.info(`Flushing ${this.eventQueue.length} queued events`);
-        
+
         while (this.eventQueue.length > 0 && this.isConnected) {
             const event = this.eventQueue.shift();
             try {
@@ -174,9 +174,9 @@ export class EventClient {
 
         this.reconnectAttempts++;
         const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-        
+
         logger.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-        
+
         setTimeout(async () => {
             try {
                 await this.connect();
