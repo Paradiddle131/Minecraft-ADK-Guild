@@ -114,11 +114,21 @@ Be helpful, efficient, and safe in your actions."""
             
             # Mock response based on command content
             if "inventory" in command.lower():
-                inventory_result = await self.bridge.get_inventory()
-                return f"My current inventory contains: {inventory_result}"
+                try:
+                    inventory_result = await self.bridge.get_inventory()
+                    if isinstance(inventory_result, dict) and 'error' in inventory_result:
+                        return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
+                    return f"My current inventory contains: {inventory_result}"
+                except Exception as e:
+                    return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
             elif "position" in command.lower():
-                pos = await self.bridge.get_position()
-                return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
+                try:
+                    pos = await self.bridge.get_position()
+                    if isinstance(pos, dict) and 'error' in pos:
+                        return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
+                    return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
+                except Exception as e:
+                    return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
             else:
                 return f"I received your command: '{command}'. The Google ADK integration is still being configured, but I can help with inventory and position queries."
 
