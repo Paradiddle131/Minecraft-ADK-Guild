@@ -51,20 +51,20 @@ class BridgeManager:
     async def initialize(self, bot_script_path: str = None):
         """Initialize the bridge and start the Mineflayer bot"""
         try:
-            # Use relative path for the bot module
+            # Use absolute path for the bot module
             if bot_script_path is None:
                 import os
-                
-                # Get project root and change working directory
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                original_cwd = os.getcwd()
-                os.chdir(project_root)
-                
-                bot_script_path = "./src/minecraft/index.js"
+
+                bot_script_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "src",
+                    "minecraft",
+                    "index.js",
+                )
 
             logger.info("Initializing JSPyBridge", script_path=bot_script_path)
 
-            # Import the bot module with relative path
+            # Import the bot module
             self.bot_module = require(bot_script_path)
 
             # Start bot with event client
