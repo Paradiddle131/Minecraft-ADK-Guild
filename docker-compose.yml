@@ -11,7 +11,7 @@ services:
     environment:
       EULA: "TRUE"
       TYPE: "VANILLA"
-      VERSION: "1.20.4"
+      VERSION: "1.21"
       MEMORY: "2G"
       SPAWN_PROTECTION: 0
       MAX_PLAYERS: 10
