@@ -39,9 +39,8 @@ class SimpleMinecraftAgent:
         self.bridge = BridgeManager(config)
         await self.bridge.initialize()
 
-        # Initialize event stream
-        self.event_stream = EventStream()
-        await self.event_stream.start()
+        # Use the event stream from bridge (already started)
+        self.event_stream = self.bridge.event_stream
 
         # Set up event processing
         self.event_processor = EventProcessor()
@@ -165,9 +164,6 @@ Be helpful, efficient, and safe in your actions."""
 
         if self.bridge:
             await self.bridge.close()
-
-        if self.event_stream:
-            await self.event_stream.stop()
 
         logger.info("Cleanup complete")
 

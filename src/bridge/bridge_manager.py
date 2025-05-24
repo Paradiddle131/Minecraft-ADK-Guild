@@ -289,6 +289,9 @@ class BridgeManager:
         if self.bot:
             self.bot.quit()
 
+        if hasattr(self, 'event_stream') and self.event_stream:
+            await self.event_stream.stop()
+
         self.is_connected = False
         logger.info("Bridge closed")
 
