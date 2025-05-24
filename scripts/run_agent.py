@@ -76,8 +76,8 @@ async def run_simple_agent(args):
         if args.interactive:
             await agent.run_interactive()
 
-        if args.command:
-            response = await agent.process_command(args.command)
+        if args.cmd:
+            response = await agent.process_command(args.cmd)
             print(f"\nAgent response: {response}\n")
 
     finally:
@@ -138,7 +138,7 @@ def main():
     agent_parser.add_argument("--model", default="gemini-2.0-flash", help="LLM model to use")
     agent_parser.add_argument("--demo", action="store_true", help="Run capability demonstration")
     agent_parser.add_argument("--interactive", action="store_true", help="Run in interactive mode")
-    agent_parser.add_argument("--command", type=str, help="Single command to execute")
+    agent_parser.add_argument("--cmd", type=str, help="Single command to execute")
     agent_parser.add_argument(
         "--enable-persistence", action="store_true", help="Enable state persistence"
     )
