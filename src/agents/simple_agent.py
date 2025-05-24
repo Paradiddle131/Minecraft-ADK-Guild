@@ -64,7 +64,10 @@ class SimpleMinecraftAgent:
         )
 
         # Create session
-        self.session = await self.session_manager.create_session()
+        self.session = await self.session_manager.create_session(
+            app_name="minecraft_agent", 
+            user_id="minecraft_player"
+        )
         logger.info(f"Agent {self.name} initialized with session {self.session.id}")
 
     def _get_agent_instruction(self) -> str:
@@ -105,14 +108,19 @@ Be helpful, efficient, and safe in your actions."""
             # Add world state from event processor
             self.session.state.update(self.event_processor.get_world_state())
 
-            # Run agent
-            response = await self.agent.run(session=self.session, prompt=command)
-
-            # Extract response
-            if response and response.messages:
-                return response.messages[-1].content
+            # TODO: Fix this to use proper Google ADK API once ADK is properly configured
+            # For now, return a simple mock response for testing
+            logger.info(f"Processing command: {command}")
+            
+            # Mock response based on command content
+            if "inventory" in command.lower():
+                inventory_result = await self.bridge.get_inventory()
+                return f"My current inventory contains: {inventory_result}"
+            elif "position" in command.lower():
+                pos = await self.bridge.get_position()
+                return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
             else:
-                return "I processed your request but have no specific response."
+                return f"I received your command: '{command}'. The Google ADK integration is still being configured, but I can help with inventory and position queries."
 
         except Exception as e:
             logger.error(f"Error processing command: {e}")

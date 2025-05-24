@@ -336,12 +336,12 @@ def create_mineflayer_tools(bridge_manager) -> List[FunctionTool]:
     chat = CommunicationTool(bridge_manager)
 
     return [
-        FunctionTool(func=movement.execute, name="move_to"),
-        FunctionTool(func=blocks.dig_block, name="dig_block"),
-        FunctionTool(func=blocks.place_block, name="place_block"),
-        FunctionTool(func=world.find_blocks, name="find_blocks"),
-        FunctionTool(func=world.get_nearby_players, name="get_nearby_players"),
-        FunctionTool(func=inventory.get_inventory, name="get_inventory"),
-        FunctionTool(func=inventory.craft_item, name="craft_item"),
-        FunctionTool(func=chat.send_chat, name="send_chat"),
+        FunctionTool(func=movement.execute),
+        FunctionTool(func=blocks.dig_block),
+        FunctionTool(func=blocks.place_block),
+        FunctionTool(func=world.find_blocks),
+        FunctionTool(func=world.get_nearby_players),
+        FunctionTool(func=inventory.get_inventory),
+        FunctionTool(func=inventory.craft_item),
+        FunctionTool(func=chat.send_chat),
     ]
