@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "JavaScript bridge for multi-agent Minecraft system",
   "main": "src/minecraft/index.js",
-  "type": "module",
   "scripts": {
     "start": "node src/minecraft/index.js",
     "dev": "node --watch src/minecraft/index.js",

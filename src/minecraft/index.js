@@ -1,15 +1,15 @@
 /**
  * Main entry point for the Minecraft bot system
  */
-import { createBot } from './bot.js';
-import { EventClient, integrateEventClient } from './event_client.js';
-import dotenv from 'dotenv';
+const { createBot } = require('./bot.js');
+const { EventClient, integrateEventClient } = require('./event_client.js');
+const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config();
 
 // Main function to start bot with event streaming
-export async function startBot(options = {}) {
+async function startBot(options = {}) {
     const defaultOptions = {
         host: process.env.MC_SERVER_HOST || 'localhost',
         port: parseInt(process.env.MC_SERVER_PORT) || 25565,
@@ -48,11 +48,8 @@ export async function startBot(options = {}) {
 }
 
 // For direct Node.js execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
     startBot().catch(console.error);
 }
 
-// CommonJS compatibility
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { startBot, createBot };
-}
+module.exports = { startBot, createBot };

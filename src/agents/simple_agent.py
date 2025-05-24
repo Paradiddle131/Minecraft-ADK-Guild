@@ -6,7 +6,7 @@ from typing import Optional
 
 import structlog
 from google.adk.agents import LlmAgent
-from google.adk.sessions import InMemorySessionManager
+from google.adk.sessions import InMemorySessionService
 
 from ..bridge.bridge_manager import BridgeConfig, BridgeManager
 from ..bridge.event_stream import EventProcessor, EventStream
@@ -26,7 +26,7 @@ class SimpleMinecraftAgent:
         self.event_processor = None
         self.agent = None
         self.session = None
-        self.session_manager = InMemorySessionManager()
+        self.session_manager = InMemorySessionService()
 
     async def initialize(self):
         """Initialize the agent and all components"""

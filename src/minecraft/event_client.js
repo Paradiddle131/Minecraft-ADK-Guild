@@ -1,8 +1,8 @@
 /**
  * WebSocket Event Client - Sends Minecraft events to Python
  */
-import WebSocket from 'ws';
-import winston from 'winston';
+const WebSocket = require('ws');
+const winston = require('winston');
 
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
@@ -15,7 +15,7 @@ const logger = winston.createLogger({
     ]
 });
 
-export class EventClient {
+class EventClient {
     constructor(port = 8765) {
         this.port = port;
         this.ws = null;
@@ -194,7 +194,7 @@ export class EventClient {
 }
 
 // Integration with MinecraftBot
-export function integrateEventClient(bot, eventClient) {
+function integrateEventClient(bot, eventClient) {
     // Forward all bot events to Python
     bot.on('minecraft_event', (event) => {
         eventClient.sendEvent(event.type, event.data);
@@ -210,3 +210,5 @@ export function integrateEventClient(bot, eventClient) {
         }
     };
 }
+
+module.exports = { EventClient, integrateEventClient };

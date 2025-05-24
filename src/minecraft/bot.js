@@ -1,11 +1,11 @@
 /**
  * Mineflayer Bot Module - JavaScript side of the bridge
  */
-import mineflayer from 'mineflayer';
-import { pathfinder, Movements, goals } from 'mineflayer-pathfinder';
-import winston from 'winston';
-import { EventEmitter } from 'events';
-import dotenv from 'dotenv';
+const mineflayer = require('mineflayer');
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const winston = require('winston');
+const { EventEmitter } = require('events');
+const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config();
@@ -338,13 +338,10 @@ class MinecraftBot {
 const { Vec3 } = mineflayer;
 
 // Export functions for Python bridge
-export async function createBot(options) {
+async function createBot(options) {
     const bot = new MinecraftBot(options);
     await bot.createBot();
     return bot;
 }
 
-// For CommonJS compatibility (Python JSPyBridge)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { createBot };
-}
+module.exports = { createBot };
