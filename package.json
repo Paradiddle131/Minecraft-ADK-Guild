@@ -1,0 +1,30 @@
+{
+  "name": "minecraft-multiagent-bridge",
+  "version": "0.1.0",
+  "description": "JavaScript bridge for multi-agent Minecraft system",
+  "main": "src/minecraft/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/minecraft/index.js",
+    "dev": "node --watch src/minecraft/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "mineflayer": "^4.14.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "pythonia": "^1.0.3",
+    "winston": "^3.11.0",
+    "ws": "^8.16.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.56.0",
+    "@types/node": "^20.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
