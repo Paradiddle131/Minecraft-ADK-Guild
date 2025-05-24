@@ -70,8 +70,8 @@ class BridgeManager:
                 
                 logger.info("Bot script exists", path=index_js_path)
                 
-                # Import the bot module
-                self.bot_module = require('./src/minecraft/index.js')
+                # Import the bot module using absolute path
+                self.bot_module = require(index_js_path)
             finally:
                 os.chdir(original_cwd)
 
