@@ -19,10 +19,7 @@ import structlog
 from dotenv import load_dotenv
 
 from src.agents.simple_agent import SimpleMinecraftAgent
-from src.bridge.bridge_manager import BridgeManager
-from src.bridge.event_stream import EventStreamProcessor
 from src.config import get_config
-from src.minecraft.bot import run_bot
 
 # Load environment variables
 load_dotenv()
@@ -52,8 +49,6 @@ class E2ETestRunner:
     
     def __init__(self):
         self.config = get_config()
-        self.bridge = None
-        self.event_processor = None
         self.agent = None
         self.trace_events = []
         self.start_time = None
@@ -75,33 +70,32 @@ class E2ETestRunner:
         logger.info("Setting up E2E test components")
         self.start_time = time.time()
         
-        # Initialize bridge
-        self.log_trace("bridge_init", {"timeout": self.config.command_timeout_ms}, "bridge")
-        self.bridge = BridgeManager(timeout_ms=self.config.command_timeout_ms)
-        await self.bridge.initialize()
-        
-        # Initialize event processor
-        self.log_trace("event_processor_init", {}, "events")
-        self.event_processor = EventStreamProcessor(self.bridge.event_queue)
-        await self.event_processor.initialize()
-        
-        # Initialize agent
+        # Initialize agent (which will create its own bridge and event processor)
         self.log_trace("agent_init", {
             "model": self.config.default_model,
             "has_api_key": bool(self.config.google_ai_api_key)
         }, "agent")
         
         self.agent = SimpleMinecraftAgent(
-            bridge_manager=self.bridge,
-            event_processor=self.event_processor,
+            name="E2ETestAgent",
             config=self.config
         )
         
         try:
+            # This will initialize the bridge, connect to Minecraft, and set up everything
             await self.agent.initialize()
             self.log_trace("agent_initialized", {
-                "session_id": self.agent.session.id if self.agent.session else None
+                "session_id": self.agent.session.id if self.agent.session else None,
+                "bridge_connected": self.agent.bridge.is_connected if self.agent.bridge else False
             }, "agent")
+            
+            # Log bridge details
+            if self.agent.bridge:
+                self.log_trace("bridge_status", {
+                    "connected": self.agent.bridge.is_connected,
+                    "spawned": self.agent.bridge.is_spawned
+                }, "bridge")
+                
         except Exception as e:
             logger.error(f"Failed to initialize agent: {e}")
             raise
@@ -111,8 +105,9 @@ class E2ETestRunner:
         logger.info("Waiting for Minecraft server connection...")
         start = time.time()
         
+        # The agent's bridge handles connection
         while time.time() - start < timeout:
-            if self.bridge.is_connected():
+            if self.agent and self.agent.bridge and self.agent.bridge.is_connected:
                 self.log_trace("minecraft_connected", {
                     "wait_time": time.time() - start
                 }, "connection")
@@ -227,11 +222,10 @@ class E2ETestRunner:
         """Clean up resources"""
         logger.info("Cleaning up test resources")
         
-        if self.event_processor:
-            await self.event_processor.cleanup()
-            
-        if self.bridge:
-            await self.bridge.cleanup()
+        # Event processor doesn't have cleanup method
+        
+        if self.agent and self.agent.bridge:
+            await self.agent.bridge.close()
             
     async def run(self):
         """Run the complete E2E test"""

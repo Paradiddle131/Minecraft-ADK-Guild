@@ -2,6 +2,7 @@
 Simple Minecraft Agent - POC for single agent with Mineflayer tools
 """
 import asyncio
+import os
 from typing import Optional
 
 import structlog
@@ -83,9 +84,10 @@ class SimpleMinecraftAgent:
             )
         }
 
-        # Add credentials if available
-        if self.ai_credentials:
-            agent_kwargs.update(self.ai_credentials)
+        # Set API key in environment for ADK
+        if self.ai_credentials and 'api_key' in self.ai_credentials:
+            os.environ["GOOGLE_API_KEY"] = self.ai_credentials['api_key']
+            logger.info("Set GOOGLE_API_KEY in environment")
 
         self.agent = LlmAgent(**agent_kwargs)
 
