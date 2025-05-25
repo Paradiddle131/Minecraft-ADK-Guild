@@ -10,10 +10,9 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from ..config import AgentConfig, get_config, setup_google_ai_credentials
-
 from ..bridge.bridge_manager import BridgeConfig, BridgeManager
-from ..bridge.event_stream import EventProcessor, EventStream
+from ..bridge.event_stream import EventProcessor
+from ..config import AgentConfig, get_config, setup_google_ai_credentials
 from ..tools.mineflayer_tools import create_mineflayer_tools
 
 logger = structlog.get_logger(__name__)
@@ -33,7 +32,7 @@ class SimpleMinecraftAgent:
         self.runner = None
         self.session = None
         self.session_manager = InMemorySessionService()
-        
+
         # Setup Google AI credentials
         try:
             self.ai_credentials = setup_google_ai_credentials(self.config)
@@ -83,11 +82,11 @@ class SimpleMinecraftAgent:
                 max_output_tokens=self.config.max_output_tokens
             )
         }
-        
+
         # Add credentials if available
         if self.ai_credentials:
             agent_kwargs.update(self.ai_credentials)
-        
+
         self.agent = LlmAgent(**agent_kwargs)
 
         # Create runner for agent execution
@@ -99,7 +98,7 @@ class SimpleMinecraftAgent:
 
         # Create session
         self.session = await self.session_manager.create_session(
-            app_name="minecraft_agent", 
+            app_name="minecraft_agent",
             user_id="minecraft_player"
         )
         logger.info(f"Agent {self.name} initialized with session {self.session.id}")
@@ -144,15 +143,15 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
         """
         try:
             logger.info(f"Processing command: {command} from player: {player}")
-            
+
             # Update session state with context
             if player:
                 self.session.state["requesting_player"] = player
-            
+
             # Add world state from event processor
             world_state = self.event_processor.get_world_state()
             self.session.state.update(world_state)
-            
+
             # Add current bot position and inventory to state
             try:
                 current_pos = await self.bridge.get_position()
@@ -160,7 +159,7 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
                     self.session.state["current_position"] = current_pos
             except Exception:
                 self.session.state["current_position"] = "unknown (server not connected)"
-            
+
             try:
                 current_inventory = await self.bridge.get_inventory()
                 if not isinstance(current_inventory, dict) or 'error' not in current_inventory:
@@ -172,17 +171,17 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
                     self.session.state["current_inventory"] = inventory_summary
             except Exception:
                 self.session.state["current_inventory"] = "unknown (server not connected)"
-            
+
             # Create user message content
             user_content = types.Content(
                 role='user',
                 parts=[types.Part(text=command)]
             )
-            
+
             # Execute agent with real ADK
             logger.info("Executing command with Google ADK")
             final_response = ""
-            
+
             async for event in self.runner.run_async(
                 user_id="minecraft_player",
                 session_id=self.session.id,
@@ -193,9 +192,9 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
                         part.text or '' for part in event.content.parts
                     )
                     logger.info(f"Agent response: {final_response}")
-            
+
             return final_response or "I couldn't process that command."
-            
+
         except Exception as e:
             logger.error(f"Error processing command: {e}")
             # Fallback for testing without proper ADK setup

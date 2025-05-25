@@ -11,13 +11,13 @@ from pydantic_settings import BaseSettings
 
 class AgentConfig(BaseSettings):
     """Configuration for Google ADK agents"""
-    
+
     # Google AI API configuration
     google_ai_api_key: Optional[str] = Field(
         default=None,
         description="Google AI API key for Gemini models"
     )
-    
+
     # Google Cloud configuration (alternative to API key)
     google_cloud_project: Optional[str] = Field(
         default=None,
@@ -27,7 +27,7 @@ class AgentConfig(BaseSettings):
         default="us-central1",
         description="Google Cloud location for Vertex AI"
     )
-    
+
     # Agent configuration
     default_model: str = Field(
         default="gemini-2.0-flash",
@@ -41,7 +41,7 @@ class AgentConfig(BaseSettings):
         default=500,
         description="Maximum tokens in agent responses"
     )
-    
+
     # Minecraft server configuration
     minecraft_host: str = Field(
         default="localhost",
@@ -55,7 +55,7 @@ class AgentConfig(BaseSettings):
         default="MinecraftAgent",
         description="Bot username in Minecraft"
     )
-    
+
     # Bridge configuration
     command_timeout_ms: int = Field(
         default=10000,
@@ -65,7 +65,7 @@ class AgentConfig(BaseSettings):
         default=1000,
         description="Maximum size of event queue"
     )
-    
+
     class Config:
         env_file = ".env"
         env_prefix = "MINECRAFT_AGENT_"
@@ -85,7 +85,7 @@ def setup_google_ai_credentials(config: AgentConfig) -> dict:
         Dictionary with credential configuration for ADK
     """
     credentials = {}
-    
+
     if config.google_ai_api_key:
         # Use Google AI API with API key
         credentials["api_key"] = config.google_ai_api_key
@@ -107,5 +107,5 @@ def setup_google_ai_credentials(config: AgentConfig) -> dict:
                 "No Google AI credentials found. Set MINECRAFT_AGENT_GOOGLE_AI_API_KEY "
                 "or GOOGLE_API_KEY environment variable, or configure Google Cloud credentials."
             )
-    
+
     return credentials

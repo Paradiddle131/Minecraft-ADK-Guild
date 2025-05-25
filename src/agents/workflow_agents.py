@@ -3,16 +3,19 @@ ADK Workflow Agent Demonstrations
 Examples of Sequential, Parallel, and Loop agents using Google ADK patterns
 """
 
-import asyncio
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import structlog
 from google.adk.agents import LlmAgent, LoopAgent, ParallelAgent, SequentialAgent
-from pydantic import BaseModel, Field
 
 from ..config import AgentConfig, get_config, setup_google_ai_credentials
 from ..tools.mineflayer_tools import (
-    dig_block, find_blocks, get_inventory, move_to, place_block, send_chat
+    dig_block,
+    find_blocks,
+    get_inventory,
+    move_to,
+    place_block,
+    send_chat,
 )
 
 logger = structlog.get_logger(__name__)
@@ -20,11 +23,11 @@ logger = structlog.get_logger(__name__)
 
 class WorkflowAgentFactory:
     """Factory for creating workflow agent examples"""
-    
+
     def __init__(self, bridge_manager, config: AgentConfig = None):
         self.bridge = bridge_manager
         self.config = config or get_config()
-        
+
         # Setup Google AI credentials
         try:
             self.ai_credentials = setup_google_ai_credentials(self.config)
@@ -32,22 +35,22 @@ class WorkflowAgentFactory:
         except ValueError as e:
             logger.warning(f"Google AI credentials not configured: {e}")
             self.ai_credentials = None
-    
+
     def _get_agent_config(self) -> Dict[str, Any]:
         """Get common agent configuration"""
         config = {}
-        
+
         if self.ai_credentials:
             config.update(self.ai_credentials)
-        
+
         return config
-    
+
     def create_gather_and_build_sequential(self) -> SequentialAgent:
         """Create a SequentialAgent that gathers resources then builds
         
         Demonstrates: Ordered task execution with state passing
         """
-        
+
         # Step 1: Resource gathering agent
         gatherer = LlmAgent(
             name="ResourceGatherer",
@@ -64,7 +67,7 @@ Available tools: find_blocks, move_to, dig_block, get_inventory, send_chat""",
             output_key="gathered_materials",
             **self._get_agent_config()
         )
-        
+
         # Step 2: Building agent
         builder = LlmAgent(
             name="SimpleBuilder",
@@ -81,18 +84,18 @@ Available tools: place_block, move_to, get_inventory, send_chat""",
             output_key="construction_result",
             **self._get_agent_config()
         )
-        
+
         return SequentialAgent(
             name="GatherAndBuild",
             sub_agents=[gatherer, builder]
         )
-    
+
     def create_multi_gatherer_parallel(self) -> ParallelAgent:
         """Create a ParallelAgent that gathers multiple resources concurrently
         
         Demonstrates: Concurrent task execution
         """
-        
+
         # Wood gatherer
         wood_gatherer = LlmAgent(
             name="WoodGatherer",
@@ -108,10 +111,10 @@ Available tools: find_blocks, move_to, dig_block, get_inventory, send_chat""",
             output_key="wood_collected",
             **self._get_agent_config()
         )
-        
+
         # Stone gatherer
         stone_gatherer = LlmAgent(
-            name="StoneGatherer", 
+            name="StoneGatherer",
             model=self.config.default_model,
             instruction="""You are a stone gathering specialist.
             
@@ -124,18 +127,18 @@ Available tools: find_blocks, move_to, dig_block, get_inventory, send_chat""",
             output_key="stone_collected",
             **self._get_agent_config()
         )
-        
+
         return ParallelAgent(
             name="MultiGatherer",
             sub_agents=[wood_gatherer, stone_gatherer]
         )
-    
+
     def create_retry_loop_agent(self) -> LoopAgent:
         """Create a LoopAgent that retries movement until successful
         
         Demonstrates: Iterative task execution with success detection
         """
-        
+
         # Movement agent that might fail
         movement_agent = LlmAgent(
             name="MovementRetrier",
@@ -152,7 +155,7 @@ Available tools: move_to, get_inventory, send_chat""",
             output_key="movement_result",
             **self._get_agent_config()
         )
-        
+
         return LoopAgent(
             name="RetryMovement",
             sub_agents=[movement_agent],
@@ -162,28 +165,28 @@ Available tools: move_to, get_inventory, send_chat""",
 
 async def demonstrate_workflow_patterns(bridge_manager, config: AgentConfig = None):
     """Demonstrate all workflow patterns with simple examples"""
-    
+
     logger.info("Starting workflow pattern demonstrations")
     factory = WorkflowAgentFactory(bridge_manager, config)
-    
+
     # Demonstrate Sequential Agent
     logger.info("=== Sequential Agent Demo ===")
     sequential_agent = factory.create_gather_and_build_sequential()
     logger.info(f"Created SequentialAgent: {sequential_agent.name}")
     logger.info("Sequential agents execute steps in order, passing state between them")
-    
-    # Demonstrate Parallel Agent 
+
+    # Demonstrate Parallel Agent
     logger.info("=== Parallel Agent Demo ===")
     parallel_agent = factory.create_multi_gatherer_parallel()
     logger.info(f"Created ParallelAgent: {parallel_agent.name}")
     logger.info("Parallel agents execute multiple tasks concurrently")
-    
+
     # Demonstrate Loop Agent
     logger.info("=== Loop Agent Demo ===")
     loop_agent = factory.create_retry_loop_agent()
     logger.info(f"Created LoopAgent: {loop_agent.name}")
     logger.info("Loop agents retry tasks until success or max iterations")
-    
+
     return {
         "sequential": sequential_agent,
         "parallel": parallel_agent,

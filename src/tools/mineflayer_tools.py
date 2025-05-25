@@ -267,7 +267,7 @@ def create_mineflayer_tools(bridge_manager) -> List:
     """
     # Set the global bridge manager
     _set_bridge_manager(bridge_manager)
-    
+
     # Return list of tool functions - ADK automatically creates FunctionTool objects
     return [
         move_to,

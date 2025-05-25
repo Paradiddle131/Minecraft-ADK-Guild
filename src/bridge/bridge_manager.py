@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 import structlog
-from javascript import require
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = structlog.get_logger(__name__)
@@ -53,21 +52,22 @@ class BridgeManager:
         """Initialize the bridge and start the Mineflayer bot"""
         try:
             import os
-            from javascript import require, On, Once, AsyncTask, once, off
-            
+
+            from javascript import require
+
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             original_cwd = os.getcwd()
             os.chdir(project_root)
-            
+
             try:
                 logger.info("Initializing JSPyBridge", cwd=os.getcwd(), project_root=project_root)
-                
+
                 index_js_path = os.path.join(project_root, "src", "minecraft", "index.js")
                 if not os.path.exists(index_js_path):
                     raise FileNotFoundError(f"Bot script not found at {index_js_path}")
-                
+
                 logger.info("Bot script exists", path=index_js_path)
-                
+
                 self.bot_module = require(index_js_path)
             finally:
                 os.chdir(original_cwd)
@@ -76,34 +76,34 @@ class BridgeManager:
             await asyncio.sleep(2.0)
 
             logger.info("Starting bot and waiting for readiness...")
-            
+
             bot_result = self.bot_module.startBot({
                 'enableEventClient': True,
                 'timeout': 60000
             }, timeout=90000)
-            
+
             wait_count = 0
             while wait_count < 300:
                 if hasattr(bot_result, 'bot') and bot_result.bot is not None:
                     break
                 await asyncio.sleep(0.1)
                 wait_count += 1
-            
+
             if not hasattr(bot_result, 'bot') or bot_result.bot is None:
                 logger.error("Bot initialization failed - no bot object returned")
                 raise TimeoutError("Bot failed to initialize - check if Minecraft server is running on localhost:25565")
-            
+
             self.bot = bot_result.bot
             self.event_client = bot_result.eventClient
-            
+
             logger.info("Waiting for bot to spawn in world...")
             self.is_spawned = await self._wait_for_spawn_with_timeout()
-            
+
             if self.is_spawned:
                 logger.info("Bot spawned successfully and ready to use")
             else:
                 logger.warning("Bot created but not spawned - server might not be running")
-            
+
             logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}, eventClient={self.event_client is not None}")
 
             await self._setup_event_listeners()
@@ -122,7 +122,7 @@ class BridgeManager:
     async def _start_event_server(self):
         """Start the WebSocket event server for JavaScript clients"""
         from ..bridge.event_stream import EventStream
-        
+
         self.event_stream = EventStream(port=8765)
         await self.event_stream.start()
         logger.info("Event stream server started on port 8765")
@@ -133,7 +133,7 @@ class BridgeManager:
             try:
                 if hasattr(bot_result, 'bot') and bot_result.bot is not None:
                     break
-            except:
+            except Exception:
                 pass
             await asyncio.sleep(0.1)
 
@@ -221,7 +221,7 @@ class BridgeManager:
         """Execute a command on the bot"""
         if not self.is_connected:
             raise RuntimeError("Bridge is not connected")
-        
+
         if not self.is_spawned:
             raise RuntimeError("Bot is not connected to Minecraft server")
 
