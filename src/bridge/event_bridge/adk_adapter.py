@@ -10,6 +10,8 @@ from google.cloud import adk
 
 from .event_registry import event_registry, EventRegistry
 from .event_logger import event_logger
+from .payload_schemas import payload_validator, ValidationResult
+from .state_sync import state_synchronizer
 
 logger = structlog.get_logger(__name__)
 
@@ -76,15 +78,37 @@ class ADKEventAdapter:
                 event_logger.log_event_failed(event_id, f"Unknown event type: {event_type}")
                 return None
             
-            # Validate payload
+            # Validate payload using both registry and common validators
             payload_data = event_data.get('data', {})
+            
+            # First, use common payload validator
+            validation_result = payload_validator.validate_payload(event_type, payload_data)
+            
+            if not validation_result.valid:
+                logger.error("Common payload validation failed", 
+                           event_type=event_type, event_id=event_id, 
+                           errors=validation_result.errors)
+                event_logger.log_event_failed(event_id, f"Payload validation failed: {validation_result.errors}")
+                return None
+            
+            # Log any warnings
+            if validation_result.warnings:
+                logger.warning("Payload validation warnings",
+                             event_type=event_type, event_id=event_id,
+                             warnings=validation_result.warnings)
+            
+            # Use normalized payload if available
+            if validation_result.normalized_payload:
+                payload_data = validation_result.normalized_payload
+            
+            # Then, validate against registry schema
             try:
                 validated_payload = self.registry.validate_event_payload(event_type, payload_data)
                 logger.debug("Event payload validated", event_type=event_type, event_id=event_id)
             except ValueError as e:
-                logger.error("Event payload validation failed", 
+                logger.error("Registry payload validation failed", 
                            event_type=event_type, event_id=event_id, error=str(e))
-                event_logger.log_event_failed(event_id, f"Payload validation failed: {e}")
+                event_logger.log_event_failed(event_id, f"Registry validation failed: {e}")
                 return None
             
             # Generate state delta
@@ -109,6 +133,13 @@ class ADKEventAdapter:
                 "minecraft.events.last_event_time": payload_data.get('time', time.time()),
                 "minecraft.events.last_event_id": event_id
             })
+            
+            # Synchronize state changes
+            await state_synchronizer.apply_state_delta(
+                event_actions.state_delta,
+                event_id=event_id,
+                source="adk_adapter"
+            )
             
             # Call registered handlers
             await self._call_event_handlers(event_type, event_data, event_actions)

@@ -346,6 +346,81 @@ class MinecraftEventEmitter extends EventEmitter {
     }
     
     /**
+     * Emit player updated event
+     * @param {object} player - The player object
+     */
+    emitPlayerUpdatedEvent(player) {
+        this.emitToPython('player_updated', {
+            username: player.username,
+            uuid: player.uuid,
+            position: this.sanitizePosition(player.entity?.position),
+            ping: player.ping,
+            gamemode: player.gameMode,
+            time: Date.now()
+        }, { priority: 10 });
+    }
+    
+    /**
+     * Emit entity move event
+     * @param {object} entity - The entity object
+     * @param {object} oldPos - Previous position
+     * @param {object} newPos - New position
+     */
+    emitEntityMoveEvent(entity, oldPos, newPos) {
+        this.emitToPython('entity_move', {
+            entity_id: entity.id,
+            entity_type: entity.type,
+            old_position: this.sanitizePosition(oldPos),
+            new_position: this.sanitizePosition(newPos),
+            velocity: this.sanitizePosition(entity.velocity),
+            time: Date.now()
+        }, { priority: 5 });
+    }
+    
+    /**
+     * Emit entity damage event
+     * @param {object} entity - The entity object
+     * @param {number} damage - Damage amount
+     * @param {string} cause - Damage cause
+     * @param {number} attackerId - Attacker entity ID
+     */
+    emitEntityDamageEvent(entity, damage, cause, attackerId) {
+        this.emitToPython('entity_damage', {
+            entity_id: entity.id,
+            entity_type: entity.type,
+            damage: damage,
+            cause: cause,
+            attacker_id: attackerId,
+            time: Date.now()
+        }, { priority: 30 });
+    }
+    
+    /**
+     * Emit bot death event
+     * @param {string} cause - Death cause
+     * @param {string} killer - Killer name
+     */
+    emitBotDeathEvent(cause, killer) {
+        this.emitToPython('bot_death', {
+            cause: cause,
+            position: this.sanitizePosition(this.bot.entity?.position),
+            killer: killer,
+            time: Date.now()
+        }, { priority: 100 });
+    }
+    
+    /**
+     * Emit bot respawn event
+     */
+    emitBotRespawnEvent() {
+        this.emitToPython('bot_respawn', {
+            position: this.sanitizePosition(this.bot.entity?.position),
+            dimension: this.bot.game?.dimension || 'overworld',
+            time: Date.now()
+        }, { priority: 90 });
+    }
+    
+    /**
      * Emit block update event
      * @param {object} oldBlock - The old block
      * @param {object} newBlock - The new block
@@ -357,6 +432,118 @@ class MinecraftEventEmitter extends EventEmitter {
             new_block: newBlock.name,
             time: Date.now()
         }, { priority: 10 });
+    }
+    
+    /**
+     * Emit block break event
+     * @param {object} block - The broken block
+     * @param {string} player - Player who broke it
+     * @param {string} tool - Tool used
+     */
+    emitBlockBreakEvent(block, player, tool) {
+        this.emitToPython('block_break', {
+            position: this.sanitizePosition(block.position),
+            block_type: block.type?.toString(),
+            block_name: block.name,
+            tool_used: tool,
+            player: player,
+            time: Date.now()
+        }, { priority: 40 });
+    }
+    
+    /**
+     * Emit block place event
+     * @param {object} block - The placed block
+     * @param {string} player - Player who placed it
+     */
+    emitBlockPlaceEvent(block, player) {
+        this.emitToPython('block_place', {
+            position: this.sanitizePosition(block.position),
+            block_type: block.type?.toString(),
+            block_name: block.name,
+            placed_by: player,
+            time: Date.now()
+        }, { priority: 40 });
+    }
+    
+    /**
+     * Emit explosion event
+     * @param {object} position - Explosion center
+     * @param {number} power - Explosion power
+     * @param {array} affectedBlocks - List of affected blocks
+     * @param {string} cause - Explosion cause
+     */
+    emitExplosionEvent(position, power, affectedBlocks, cause) {
+        this.emitToPython('explosion', {
+            position: this.sanitizePosition(position),
+            power: power,
+            affected_blocks: affectedBlocks.map(pos => this.sanitizePosition(pos)),
+            cause: cause,
+            time: Date.now()
+        }, { priority: 80 });
+    }
+    
+    /**
+     * Emit weather change event
+     * @param {string} oldWeather - Previous weather
+     * @param {string} newWeather - New weather
+     * @param {boolean} thundering - Is thundering
+     * @param {boolean} raining - Is raining
+     */
+    emitWeatherChangeEvent(oldWeather, newWeather, thundering, raining) {
+        this.emitToPython('weather_change', {
+            old_weather: oldWeather,
+            new_weather: newWeather,
+            thundering: thundering,
+            raining: raining,
+            time: Date.now()
+        }, { priority: 20 });
+    }
+    
+    /**
+     * Emit time change event
+     * @param {number} timeOfDay - Time of day (0-24000)
+     * @param {number} age - World age
+     */
+    emitTimeChangeEvent(timeOfDay, age) {
+        const isDay = timeOfDay > 1000 && timeOfDay < 13000;
+        const isNight = timeOfDay > 14000 || timeOfDay < 1000;
+        
+        this.emitToPython('time_change', {
+            time_of_day: timeOfDay,
+            age: age,
+            is_day: isDay,
+            is_night: isNight,
+            time: Date.now()
+        }, { priority: 5 });
+    }
+    
+    /**
+     * Emit chunk load event
+     * @param {number} chunkX - Chunk X coordinate
+     * @param {number} chunkZ - Chunk Z coordinate
+     */
+    emitChunkLoadEvent(chunkX, chunkZ) {
+        this.emitToPython('chunk_load', {
+            chunk_x: chunkX,
+            chunk_z: chunkZ,
+            dimension: this.bot.game?.dimension || 'overworld',
+            time: Date.now()
+        }, { priority: 15 });
+    }
+    
+    /**
+     * Emit chunk unload event
+     * @param {number} chunkX - Chunk X coordinate
+     * @param {number} chunkZ - Chunk Z coordinate
+     */
+    emitChunkUnloadEvent(chunkX, chunkZ) {
+        this.emitToPython('chunk_unload', {
+            chunk_x: chunkX,
+            chunk_z: chunkZ,
+            dimension: this.bot.game?.dimension || 'overworld',
+            time: Date.now()
+        }, { priority: 15 });
     }
     
     /**
@@ -397,6 +584,90 @@ class MinecraftEventEmitter extends EventEmitter {
             count: item?.count || 0,
             time: Date.now()
         }, { priority: 40 });
+    }
+    
+    /**
+     * Emit container open event
+     * @param {object} window - The window/container object
+     */
+    emitContainerOpenEvent(window) {
+        this.emitToPython('container_open', {
+            container_type: window.type || 'unknown',
+            container_position: window.position ? this.sanitizePosition(window.position) : null,
+            container_size: window.slots ? window.slots.length : 0,
+            time: Date.now()
+        }, { priority: 50 });
+    }
+    
+    /**
+     * Emit container close event
+     * @param {object} window - The window/container object
+     */
+    emitContainerCloseEvent(window) {
+        this.emitToPython('container_close', {
+            container_type: window.type || 'unknown',
+            container_position: window.position ? this.sanitizePosition(window.position) : null,
+            time: Date.now()
+        }, { priority: 45 });
+    }
+    
+    /**
+     * Emit item drop event
+     * @param {object} item - The dropped item entity
+     */
+    emitItemDropEvent(item) {
+        this.emitToPython('item_drop', {
+            item_name: item.name || item.itemType || 'unknown',
+            count: item.itemCount || item.count || 1,
+            position: this.sanitizePosition(item.position),
+            entity_id: item.id,
+            time: Date.now()
+        }, { priority: 35 });
+    }
+    
+    /**
+     * Emit item pickup event
+     * @param {object} item - The picked up item entity
+     */
+    emitItemPickupEvent(item) {
+        this.emitToPython('item_pickup', {
+            item_name: item.name || item.itemType || 'unknown',
+            count: item.itemCount || item.count || 1,
+            position: this.sanitizePosition(item.position),
+            entity_id: item.id,
+            time: Date.now()
+        }, { priority: 35 });
+    }
+    
+    /**
+     * Emit item craft event
+     * @param {string} recipe - Recipe name
+     * @param {object} result - Crafted item
+     * @param {array} ingredients - Used ingredients
+     */
+    emitItemCraftEvent(recipe, result, ingredients) {
+        this.emitToPython('item_craft', {
+            recipe_name: recipe,
+            result_item: result.name,
+            result_count: result.count || 1,
+            ingredients: ingredients || [],
+            time: Date.now()
+        }, { priority: 60 });
+    }
+    
+    /**
+     * Emit item consume event
+     * @param {object} item - Consumed item
+     * @param {number} foodPoints - Food points gained
+     * @param {number} saturation - Saturation gained
+     */
+    emitItemConsumeEvent(item, foodPoints, saturation) {
+        this.emitToPython('item_consume', {
+            item_name: item.name,
+            food_points: foodPoints,
+            saturation: saturation,
+            time: Date.now()
+        }, { priority: 55 });
     }
 }
 

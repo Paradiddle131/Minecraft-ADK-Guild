@@ -16,6 +16,24 @@ from .bridge_connector import (
     initialize_event_bridge,
     shutdown_event_bridge
 )
+from .payload_schemas import (
+    BaseEventPayload,
+    PayloadValidator,
+    payload_validator
+)
+from .event_filters import (
+    EventFilterManager,
+    filter_manager,
+    create_debug_filters,
+    create_production_filters,
+    create_minimal_filters
+)
+from .state_sync import (
+    StateSynchronizer,
+    state_synchronizer,
+    StateSnapshot,
+    SyncConfig
+)
 
 __all__ = [
     "EventRegistry",
@@ -35,5 +53,17 @@ __all__ = [
     "EventBridgeConnector",
     "bridge_connector",
     "initialize_event_bridge",
-    "shutdown_event_bridge"
+    "shutdown_event_bridge",
+    "BaseEventPayload",
+    "PayloadValidator", 
+    "payload_validator",
+    "EventFilterManager",
+    "filter_manager",
+    "create_debug_filters",
+    "create_production_filters", 
+    "create_minimal_filters",
+    "StateSynchronizer",
+    "state_synchronizer",
+    "StateSnapshot",
+    "SyncConfig"
 ]

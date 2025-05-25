@@ -13,6 +13,7 @@ import structlog
 
 from .event_registry import event_registry
 from .event_logger import event_logger
+from .event_filters import filter_manager, EventFilterManager
 
 logger = structlog.get_logger(__name__)
 
@@ -159,6 +160,13 @@ class PriorityEventQueue:
         
         if not event_type or not event_id:
             logger.error("Invalid event data for queue", event_data=event_data)
+            return False
+        
+        # Apply global event filters first
+        if not await filter_manager.global_filters.apply_filters(event_data):
+            logger.debug("Event dropped by global filters",
+                        event_type=event_type, event_id=event_id)
+            self.stats.total_dropped += 1
             return False
         
         # Apply sampling if configured

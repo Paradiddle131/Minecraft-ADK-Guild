@@ -111,6 +111,10 @@ class MinecraftBot {
             this.eventEmitter.emitPlayerLeftEvent(player);
         });
 
+        this.bot.on('playerUpdated', (player) => {
+            this.eventEmitter.emitPlayerUpdatedEvent(player);
+        });
+
         // Health events
         this.bot.on('health', () => {
             this.eventEmitter.emitHealthEvent();
@@ -133,6 +137,50 @@ class MinecraftBot {
             this.eventEmitter.emitBlockUpdateEvent(oldBlock, newBlock);
         });
 
+        // Advanced world events
+        this.bot.on('diggingCompleted', (block) => {
+            this.eventEmitter.emitBlockBreakEvent(block, this.bot.username, this.bot.heldItem?.name);
+        });
+
+        this.bot.on('chunkColumnLoad', (point) => {
+            this.eventEmitter.emitChunkLoadEvent(point.x, point.z);
+        });
+
+        this.bot.on('chunkColumnUnload', (point) => {
+            this.eventEmitter.emitChunkUnloadEvent(point.x, point.z);
+        });
+
+        // Weather and time events with throttling
+        let lastWeatherState = null;
+        let lastTimeEmit = 0;
+        const timeEmitThrottle = 30000; // 30 seconds
+
+        this.bot.on('weatherUpdate', () => {
+            const currentWeather = this.bot.thunderState ? 'thunder' : 
+                                 this.bot.rainState > 0 ? 'rain' : 'clear';
+            
+            if (lastWeatherState && lastWeatherState !== currentWeather) {
+                this.eventEmitter.emitWeatherChangeEvent(
+                    lastWeatherState, 
+                    currentWeather,
+                    this.bot.thunderState > 0,
+                    this.bot.rainState > 0
+                );
+            }
+            lastWeatherState = currentWeather;
+        });
+
+        this.bot.on('time', () => {
+            const now = Date.now();
+            if (now - lastTimeEmit > timeEmitThrottle) {
+                this.eventEmitter.emitTimeChangeEvent(
+                    this.bot.time.timeOfDay,
+                    this.bot.time.age
+                );
+                lastTimeEmit = now;
+            }
+        });
+
         // Entity events
         this.bot.on('entitySpawn', (entity) => {
             this.eventEmitter.emitEntitySpawnEvent(entity);
@@ -140,6 +188,31 @@ class MinecraftBot {
 
         this.bot.on('entityGone', (entity) => {
             this.eventEmitter.emitEntityDeathEvent(entity);
+        });
+
+        // Entity movement tracking with throttling
+        const entityMoveThrottle = new Map(); // entity_id -> last_emit_time
+        const entityMoveDelay = 2000; // 2 seconds between entity move events
+        
+        this.bot.on('entityMoved', (entity) => {
+            const now = Date.now();
+            const lastEmit = entityMoveThrottle.get(entity.id) || 0;
+            
+            if (now - lastEmit > entityMoveDelay) {
+                const oldPos = entity.position; // This might need adjustment based on mineflayer API
+                this.eventEmitter.emitEntityMoveEvent(entity, oldPos, entity.position);
+                entityMoveThrottle.set(entity.id, now);
+            }
+        });
+
+        // Bot death and respawn events
+        this.bot.on('death', () => {
+            const deathMessage = this.bot.game?.deathScore?.deathMessage || 'Unknown cause';
+            this.eventEmitter.emitBotDeathEvent(deathMessage, null);
+        });
+
+        this.bot.on('respawn', () => {
+            this.eventEmitter.emitBotRespawnEvent();
         });
 
         // Inventory events
@@ -151,6 +224,40 @@ class MinecraftBot {
             
             const inventorySlot = slot - this.bot.inventory.inventoryStart;
             this.eventEmitter.emitInventoryChangeEvent(inventorySlot, newItem);
+        });
+
+        // Container events
+        this.bot.on('windowOpen', (window) => {
+            this.eventEmitter.emitContainerOpenEvent(window);
+        });
+
+        this.bot.on('windowClose', (window) => {
+            this.eventEmitter.emitContainerCloseEvent(window);
+        });
+
+        // Item drop/pickup events
+        this.bot.on('playerCollect', (collector, collected) => {
+            if (collector.username === this.bot.username) {
+                this.eventEmitter.emitItemPickupEvent(collected);
+            }
+        });
+
+        // Crafting events (if available)
+        if (this.bot.supportFeature('craft')) {
+            this.bot.on('craft', (recipe, result) => {
+                this.eventEmitter.emitItemCraftEvent(recipe.name, result, recipe.ingredients);
+            });
+        }
+
+        // Consumption events
+        this.bot.on('consume', () => {
+            const heldItem = this.bot.heldItem;
+            if (heldItem && heldItem.name) {
+                // Estimate food points and saturation (these might not be directly available)
+                const foodPoints = this.getFoodPoints(heldItem.name);
+                const saturation = this.getSaturation(heldItem.name);
+                this.eventEmitter.emitItemConsumeEvent(heldItem, foodPoints, saturation);
+            }
         });
 
         // Error and connection events - forward to legacy handler
@@ -363,6 +470,36 @@ class MinecraftBot {
             west: new Vec3(-1, 0, 0)
         };
         return faces[face] || faces.top;
+    }
+
+    getFoodPoints(itemName) {
+        // Basic food points mapping - could be expanded with a proper food database
+        const foodValues = {
+            'apple': 4,
+            'bread': 5,
+            'cooked_beef': 8,
+            'cooked_chicken': 6,
+            'cooked_porkchop': 8,
+            'golden_apple': 4,
+            'cookie': 2,
+            'cake': 14
+        };
+        return foodValues[itemName] || 0;
+    }
+
+    getSaturation(itemName) {
+        // Basic saturation mapping
+        const saturationValues = {
+            'apple': 2.4,
+            'bread': 6.0,
+            'cooked_beef': 12.8,
+            'cooked_chicken': 7.2,
+            'cooked_porkchop': 12.8,
+            'golden_apple': 9.6,
+            'cookie': 0.4,
+            'cake': 0.4
+        };
+        return saturationValues[itemName] || 0;
     }
 
     // Python bridge interface methods
