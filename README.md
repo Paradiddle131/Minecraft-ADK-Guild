@@ -182,6 +182,18 @@ gatherer = ResourceGatherer()
 await gatherer.collect_wood(amount=64)
 ```
 
+### Running Tests
+
+```bash
+# All tests
+pytest tests/
+
+# E2E tests for inventory query
+python test_inventory_flow_demo.py      # Demo without server
+python run_inventory_e2e_test.py        # Full E2E with server
+pytest tests/test_check_inventory_e2e.py -v  # Unit test version
+```
+
 ## 📊 Monitoring
 
 The system includes a real-time dashboard showing:
