@@ -44,7 +44,7 @@ nano .env
 Key settings:
 - `MC_SERVER_HOST`: Leave as `localhost` for local Docker
 - `MC_BOT_USERNAME`: Choose a name for your bot
-- `ADK_API_KEY`: Add when Google ADK is available
+- `MINECRAFT_AGENT_GOOGLE_AI_API_KEY`: Your Google AI/Gemini API key
 
 ### 4. Start Services
 
