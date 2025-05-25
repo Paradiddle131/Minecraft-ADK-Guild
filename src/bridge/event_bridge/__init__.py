@@ -35,6 +35,14 @@ from .state_sync import (
     SyncConfig
 )
 
+# Advanced features
+from .compression import EventCompressor
+from .circuit_breaker import CircuitBreaker, circuit_breaker
+from .connection_recovery import ConnectionRecoveryManager
+from .metrics import EventMetricsCollector, MetricsDashboard, get_metrics_collector
+from .tracing import EventTracer, TracingMiddleware, get_tracer, start_tracing, stop_tracing
+from .profiling import PerformanceProfiler, get_profiler, start_profiling, stop_profiling
+
 __all__ = [
     "EventRegistry",
     "event_registry",
@@ -65,5 +73,25 @@ __all__ = [
     "StateSynchronizer",
     "state_synchronizer",
     "StateSnapshot",
-    "SyncConfig"
+    "SyncConfig",
+    
+    # Advanced features
+    "EventCompressor",
+    "CircuitBreaker",
+    "circuit_breaker",
+    "ConnectionRecoveryManager",
+    
+    # Monitoring
+    "EventMetricsCollector",
+    "MetricsDashboard", 
+    "get_metrics_collector",
+    "EventTracer",
+    "TracingMiddleware",
+    "get_tracer",
+    "start_tracing",
+    "stop_tracing",
+    "PerformanceProfiler",
+    "get_profiler",
+    "start_profiling",
+    "stop_profiling"
 ]
