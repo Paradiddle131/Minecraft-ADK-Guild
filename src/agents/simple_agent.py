@@ -2,15 +2,20 @@
 Simple Minecraft Agent - POC for single agent with Mineflayer tools
 """
 import asyncio
+import os
 from typing import Optional
 
 import structlog
+from google.adk import Runner
 from google.adk.agents import LlmAgent
 from google.adk.sessions import InMemorySessionService
+from google.adk.runners import RunConfig
+from google.genai import types
 
 from ..bridge.bridge_manager import BridgeConfig, BridgeManager
 from ..bridge.event_stream import EventProcessor, EventStream
 from ..tools.mineflayer_tools import create_mineflayer_tools
+from ..config import config
 
 logger = structlog.get_logger(__name__)
 
@@ -27,16 +32,27 @@ class SimpleMinecraftAgent:
         self.agent = None
         self.session = None
         self.session_manager = InMemorySessionService()
+        self.runner = None
 
     async def initialize(self):
         """Initialize the agent and all components"""
         logger.info(f"Initializing {self.name}")
+        
+        # Check for API key
+        if not config.validate_api_key():
+            # Set API key from environment if available
+            api_key = config.api_key
+            if api_key:
+                os.environ["GOOGLE_API_KEY"] = api_key
+            else:
+                logger.warning("No Google API key found. Please set GOOGLE_API_KEY or ADK_API_KEY environment variable.")
 
         # Initialize bridge
-        config = BridgeConfig(
-            command_timeout=10000, batch_size=5  # 10 seconds for Minecraft operations
+        bridge_config = BridgeConfig(
+            command_timeout=config.jspy_command_timeout, 
+            batch_size=config.jspy_batch_size
         )
-        self.bridge = BridgeManager(config)
+        self.bridge = BridgeManager(bridge_config)
         await self.bridge.initialize()
 
         # Use the event stream from bridge (already started)
@@ -68,6 +84,15 @@ class SimpleMinecraftAgent:
             app_name="minecraft_agent", 
             user_id="minecraft_player"
         )
+        
+        # Create runner for agent execution
+        self.runner = Runner(
+            app_name="minecraft_agent",
+            agent=self.agent,
+            session_service=self.session_manager
+        )
+        self.run_config = RunConfig(max_llm_calls=50)
+        
         logger.info(f"Agent {self.name} initialized with session {self.session.id}")
 
     def _get_agent_instruction(self) -> str:
@@ -108,33 +133,51 @@ Be helpful, efficient, and safe in your actions."""
             # Add world state from event processor
             self.session.state.update(self.event_processor.get_world_state())
 
-            # TODO: Fix this to use proper Google ADK API once ADK is properly configured
-            # For now, return a simple mock response for testing
-            logger.info(f"Processing command: {command}")
+            # Create user message content
+            content = types.Content(
+                parts=[types.Part(text=command)],
+                role="user"
+            )
             
-            # Mock response based on command content
-            if "inventory" in command.lower():
-                try:
-                    inventory_result = await self.bridge.get_inventory()
-                    if isinstance(inventory_result, dict) and 'error' in inventory_result:
-                        return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-                    return f"My current inventory contains: {inventory_result}"
-                except Exception as e:
-                    return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-            elif "position" in command.lower():
-                try:
-                    pos = await self.bridge.get_position()
-                    if isinstance(pos, dict) and 'error' in pos:
-                        return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
-                    return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
-                except Exception as e:
-                    return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
+            logger.info(f"Processing command with ADK: {command}")
+            
+            # Run the agent
+            events = []
+            response_text = ""
+            
+            async for event in self.runner.run_async(
+                session_id=self.session.id,
+                user_id="minecraft_player",
+                new_message=content,
+                run_config=self.run_config
+            ):
+                events.append(event)
+                
+                # Extract text responses from the agent
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            response_text += part.text
+                            
+                # Log tool calls for debugging
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.function_call:
+                            logger.info(f"Tool called: {part.function_call.name}", 
+                                      args=part.function_call.args)
+            
+            # Return the collected response
+            if response_text:
+                return response_text.strip()
             else:
-                return f"I received your command: '{command}'. The Google ADK integration is still being configured, but I can help with inventory and position queries."
+                return "I processed your command but didn't generate a text response. Please check the logs for tool execution details."
 
         except Exception as e:
-            logger.error(f"Error processing command: {e}")
-            return f"Sorry, I encountered an error: {str(e)}"
+            logger.error(f"Error processing command: {e}", exc_info=True)
+            # Check if it's a connection issue
+            if "not connected" in str(e).lower() or "connection" in str(e).lower():
+                return "I cannot perform this action because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable Minecraft commands."
+            return f"Sorry, I encountered an error while processing your command: {str(e)}"
 
     async def demonstrate_capabilities(self):
         """Run a demonstration of agent capabilities"""

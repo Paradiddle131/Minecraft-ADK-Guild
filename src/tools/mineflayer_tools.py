@@ -1,46 +1,37 @@
 """
 Mineflayer Tools for Google ADK - Wraps Minecraft bot commands as ADK tools
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import structlog
-from google.adk.tools import FunctionTool, ToolContext
 
 logger = structlog.get_logger(__name__)
 
 
-class MineflayerCommandTool(FunctionTool):
-    """Base class for Mineflayer command tools"""
+def create_mineflayer_tools(bridge_manager):
+    """Create all Mineflayer tools for ADK agents.
 
-    def __init__(self, bridge_manager):
-        self.bridge = bridge_manager
-        super().__init__(func=self.execute)
+    Args:
+        bridge_manager: BridgeManager instance
 
-    async def execute(self, **kwargs):
-        """Override in subclasses"""
-        raise NotImplementedError
-
-
-class MovementTool(MineflayerCommandTool):
-    """Tool for bot movement commands"""
-
-    async def execute(
-        self, x: int, y: int, z: int, tool_context: ToolContext = None
-    ) -> Dict[str, Any]:
+    Returns:
+        List of tool functions
+    """
+    
+    async def move_to(x: int, y: int, z: int) -> Dict[str, Any]:
         """Move bot to specified coordinates using pathfinding.
-
+        
         Args:
             x: Target X coordinate
             y: Target Y coordinate
             z: Target Z coordinate
-            tool_context: ADK tool context
-
+            
         Returns:
             Dictionary with movement result
         """
         try:
             # Get current position for distance calculation
-            current_pos = await self.bridge.get_position()
+            current_pos = await bridge_manager.get_position()
             distance = (
                 (x - current_pos["x"]) ** 2
                 + (y - current_pos["y"]) ** 2
@@ -50,15 +41,7 @@ class MovementTool(MineflayerCommandTool):
             logger.info(f"Moving to ({x}, {y}, {z}), distance: {distance:.1f}")
 
             # Execute movement
-            await self.bridge.move_to(x, y, z)
-
-            # Update state with new position
-            tool_context.state["bot_position"] = {"x": x, "y": y, "z": z}
-            tool_context.state["last_movement"] = {
-                "from": current_pos,
-                "to": {"x": x, "y": y, "z": z},
-                "distance": distance,
-            }
+            await bridge_manager.move_to(x, y, z)
 
             return {
                 "status": "success",
@@ -70,27 +53,20 @@ class MovementTool(MineflayerCommandTool):
             logger.error(f"Movement failed: {e}")
             return {"status": "error", "error": str(e)}
 
-
-class BlockInteractionTool(MineflayerCommandTool):
-    """Tool for block digging and placing"""
-
-    async def dig_block(
-        self, x: int, y: int, z: int, tool_context: ToolContext = None
-    ) -> Dict[str, Any]:
+    async def dig_block(x: int, y: int, z: int) -> Dict[str, Any]:
         """Dig a block at specified coordinates.
 
         Args:
             x: Block X coordinate
             y: Block Y coordinate
             z: Block Z coordinate
-            tool_context: ADK tool context
 
         Returns:
             Dictionary with dig result
         """
         try:
             # Check what block is there first
-            block_info = await self.bridge.execute_command("world.getBlock", x=x, y=y, z=z)
+            block_info = await bridge_manager.execute_command("world.getBlock", x=x, y=y, z=z)
             block_name = block_info.get("name", "unknown")
 
             if block_name == "air":
@@ -99,11 +75,7 @@ class BlockInteractionTool(MineflayerCommandTool):
             logger.info(f"Digging {block_name} at ({x}, {y}, {z})")
 
             # Dig the block
-            await self.bridge.dig_block(x, y, z)
-
-            # Update inventory prediction (actual update comes from events)
-            if "inventory" not in tool_context.state:
-                tool_context.state["inventory"] = {}
+            await bridge_manager.dig_block(x, y, z)
 
             return {"status": "success", "block": block_name, "position": {"x": x, "y": y, "z": z}}
 
@@ -112,13 +84,11 @@ class BlockInteractionTool(MineflayerCommandTool):
             return {"status": "error", "error": str(e)}
 
     async def place_block(
-        self,
         x: int,
         y: int,
         z: int,
         block_type: str = "stone",
-        face: str = "top",
-        tool_context: ToolContext = None,
+        face: str = "top"
     ) -> Dict[str, Any]:
         """Place a block at specified coordinates.
 
@@ -128,26 +98,25 @@ class BlockInteractionTool(MineflayerCommandTool):
             z: Reference block Z coordinate
             block_type: Type of block to place
             face: Which face of the reference block to place against
-            tool_context: ADK tool context
 
         Returns:
             Dictionary with place result
         """
         try:
             # Check inventory for the block
-            inventory = await self.bridge.get_inventory()
+            inventory = await bridge_manager.get_inventory()
             has_block = any(item["name"] == block_type for item in inventory)
 
             if not has_block:
                 return {"status": "error", "error": f"No {block_type} in inventory"}
 
             # Equip the block
-            await self.bridge.execute_command(
+            await bridge_manager.execute_command(
                 "inventory.equip", item=block_type, destination="hand"
             )
 
             # Place the block
-            await self.bridge.place_block(x, y, z, face)
+            await bridge_manager.place_block(x, y, z, face)
 
             logger.info(f"Placed {block_type} at ({x}, {y}, {z})")
 
@@ -162,16 +131,10 @@ class BlockInteractionTool(MineflayerCommandTool):
             logger.error(f"Place failed: {e}")
             return {"status": "error", "error": str(e)}
 
-
-class WorldQueryTool(MineflayerCommandTool):
-    """Tool for querying world information"""
-
     async def find_blocks(
-        self,
         block_name: str,
         max_distance: int = 64,
-        count: int = 10,
-        tool_context: ToolContext = None,
+        count: int = 10
     ) -> Dict[str, Any]:
         """Find blocks of a specific type near the bot.
 
@@ -179,7 +142,6 @@ class WorldQueryTool(MineflayerCommandTool):
             block_name: Name of block to find (e.g. "oak_log", "stone")
             max_distance: Maximum search distance
             count: Maximum number of blocks to return
-            tool_context: ADK tool context
 
         Returns:
             Dictionary with found blocks
@@ -187,12 +149,9 @@ class WorldQueryTool(MineflayerCommandTool):
         try:
             logger.info(f"Searching for {block_name} within {max_distance} blocks")
 
-            blocks = await self.bridge.execute_command(
+            blocks = await bridge_manager.execute_command(
                 "world.findBlocks", name=block_name, maxDistance=max_distance, count=count
             )
-
-            # Store in state for agent reference
-            tool_context.state[f"found_{block_name}_blocks"] = blocks
 
             return {
                 "status": "success",
@@ -205,40 +164,14 @@ class WorldQueryTool(MineflayerCommandTool):
             logger.error(f"Block search failed: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def get_nearby_players(self, tool_context: ToolContext = None) -> Dict[str, Any]:
-        """Get information about nearby players.
-
-        Args:
-            tool_context: ADK tool context
-
-        Returns:
-            Dictionary with player information
-        """
-        try:
-            # This would come from event stream in full implementation
-            players = tool_context.state.get("nearby_players", [])
-
-            return {"status": "success", "count": len(players), "players": players}
-
-        except Exception as e:
-            logger.error(f"Player query failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-
-class InventoryTool(MineflayerCommandTool):
-    """Tool for inventory management"""
-
-    async def get_inventory(self, tool_context: ToolContext = None) -> Dict[str, Any]:
+    async def get_inventory() -> Dict[str, Any]:
         """Get current inventory contents.
-
-        Args:
-            tool_context: ADK tool context
 
         Returns:
             Dictionary with inventory items
         """
         try:
-            items = await self.bridge.get_inventory()
+            items = await bridge_manager.get_inventory()
 
             # Organize by item type
             inventory_summary = {}
@@ -247,9 +180,6 @@ class InventoryTool(MineflayerCommandTool):
                 if name not in inventory_summary:
                     inventory_summary[name] = 0
                 inventory_summary[name] += item["count"]
-
-            # Update state
-            tool_context.state["inventory"] = inventory_summary
 
             return {
                 "status": "success",
@@ -262,86 +192,46 @@ class InventoryTool(MineflayerCommandTool):
             logger.error(f"Inventory query failed: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def craft_item(
-        self, recipe: str, count: int = 1, tool_context: ToolContext = None
-    ) -> Dict[str, Any]:
-        """Craft an item using available materials.
-
-        Args:
-            recipe: Name of item to craft
-            count: Number to craft
-            tool_context: ADK tool context
-
-        Returns:
-            Dictionary with craft result
-        """
-        # Simplified for POC - full implementation would check recipes
-        try:
-            logger.info(f"Crafting {count} {recipe}")
-
-            # This would use actual Mineflayer crafting API
-            await self.bridge.execute_command("craft", recipe=recipe, count=count)
-
-            return {"status": "success", "crafted": recipe, "count": count}
-
-        except Exception as e:
-            logger.error(f"Crafting failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-
-class CommunicationTool(MineflayerCommandTool):
-    """Tool for chat and communication"""
-
-    async def send_chat(self, message: str, tool_context: ToolContext = None) -> Dict[str, Any]:
+    async def send_chat(message: str) -> Dict[str, Any]:
         """Send a chat message.
 
         Args:
             message: Message to send
-            tool_context: ADK tool context
 
         Returns:
             Dictionary with send result
         """
         try:
-            await self.bridge.chat(message)
-
-            # Log in state
-            if "chat_history" not in tool_context.state:
-                tool_context.state["chat_history"] = []
-
-            tool_context.state["chat_history"].append(
-                {"type": "sent", "message": message, "timestamp": str(logger.time())}
-            )
-
+            await bridge_manager.chat(message)
             return {"status": "success", "message": message}
 
         except Exception as e:
             logger.error(f"Chat failed: {e}")
             return {"status": "error", "error": str(e)}
+            
+    async def get_position() -> Dict[str, Any]:
+        """Get the bot's current position.
+        
+        Returns:
+            Dictionary with position information
+        """
+        try:
+            pos = await bridge_manager.get_position()
+            return {
+                "status": "success",
+                "position": pos
+            }
+        except Exception as e:
+            logger.error(f"Failed to get position: {e}")
+            return {"status": "error", "error": str(e)}
 
-
-def create_mineflayer_tools(bridge_manager) -> List[FunctionTool]:
-    """Create all Mineflayer tools for ADK agents.
-
-    Args:
-        bridge_manager: BridgeManager instance
-
-    Returns:
-        List of configured tools
-    """
-    movement = MovementTool(bridge_manager)
-    blocks = BlockInteractionTool(bridge_manager)
-    world = WorldQueryTool(bridge_manager)
-    inventory = InventoryTool(bridge_manager)
-    chat = CommunicationTool(bridge_manager)
-
+    # Return the tool functions directly - ADK will wrap them
     return [
-        FunctionTool(func=movement.execute),
-        FunctionTool(func=blocks.dig_block),
-        FunctionTool(func=blocks.place_block),
-        FunctionTool(func=world.find_blocks),
-        FunctionTool(func=world.get_nearby_players),
-        FunctionTool(func=inventory.get_inventory),
-        FunctionTool(func=inventory.craft_item),
-        FunctionTool(func=chat.send_chat),
+        move_to,
+        dig_block,
+        place_block,
+        find_blocks,
+        get_inventory,
+        send_chat,
+        get_position
     ]
