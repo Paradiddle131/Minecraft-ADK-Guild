@@ -66,11 +66,12 @@ class AgentConfig(BaseSettings):
         description="Maximum size of event queue"
     )
     
-    class Config:
-        env_file = ".env"
-        env_prefix = "MINECRAFT_AGENT_"
-        case_sensitive = False
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = {
+        "env_file": ".env",
+        "env_prefix": "MINECRAFT_AGENT_",
+        "case_sensitive": False,
+        "extra": "ignore"  # Ignore extra environment variables
+    }
 
 
 def get_config() -> AgentConfig:

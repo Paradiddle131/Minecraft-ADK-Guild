@@ -158,20 +158,27 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
                 current_pos = await self.bridge.get_position()
                 if not isinstance(current_pos, dict) or 'error' not in current_pos:
                     self.session.state["current_position"] = current_pos
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to get position: {e}")
                 self.session.state["current_position"] = "unknown (server not connected)"
             
             try:
                 current_inventory = await self.bridge.get_inventory()
-                if not isinstance(current_inventory, dict) or 'error' not in current_inventory:
+                if isinstance(current_inventory, list):
                     # Create inventory summary
                     inventory_summary = {}
                     for item in current_inventory:
                         name = item["name"]
                         inventory_summary[name] = inventory_summary.get(name, 0) + item["count"]
                     self.session.state["current_inventory"] = inventory_summary
-            except Exception:
+                else:
+                    self.session.state["current_inventory"] = "empty"
+            except Exception as e:
+                logger.debug(f"Failed to get inventory: {e}")
                 self.session.state["current_inventory"] = "unknown (server not connected)"
+            
+            # Save session state before executing agent
+            await self.session_manager.update_session(self.session)
             
             # Create user message content
             user_content = types.Content(
@@ -182,41 +189,54 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
             # Execute agent with real ADK
             logger.info("Executing command with Google ADK")
             final_response = ""
+            tool_calls = []
             
             async for event in self.runner.run_async(
                 user_id="minecraft_player",
                 session_id=self.session.id,
                 new_message=user_content
             ):
+                # Log different event types for debugging
+                if hasattr(event, 'type'):
+                    logger.debug(f"Event type: {event.type}")
+                
+                # Handle tool calls
+                if hasattr(event, 'tool_calls') and event.tool_calls:
+                    for tool_call in event.tool_calls:
+                        logger.info(f"Tool called: {tool_call.function.name} with args: {tool_call.function.arguments}")
+                        tool_calls.append(tool_call)
+                
+                # Handle final response
                 if event.is_final_response() and event.content:
                     final_response = ''.join(
                         part.text or '' for part in event.content.parts
                     )
                     logger.info(f"Agent response: {final_response}")
+                
+                # Handle state updates from output_key
+                if hasattr(event, 'state_delta') and event.state_delta:
+                    logger.debug(f"State update: {event.state_delta}")
+                    self.session.state.update(event.state_delta)
+            
+            # Extract response from output_key if set
+            if self.agent.output_key and self.agent.output_key in self.session.state:
+                final_response = self.session.state[self.agent.output_key]
+            
+            # Update session after execution
+            await self.session_manager.update_session(self.session)
             
             return final_response or "I couldn't process that command."
             
         except Exception as e:
-            logger.error(f"Error processing command: {e}")
-            # Fallback for testing without proper ADK setup
-            if "inventory" in command.lower():
-                try:
-                    inventory_result = await self.bridge.get_inventory()
-                    if isinstance(inventory_result, dict) and 'error' in inventory_result:
-                        return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-                    return f"My current inventory contains: {inventory_result}"
-                except Exception:
-                    return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-            elif "position" in command.lower():
-                try:
-                    pos = await self.bridge.get_position()
-                    if isinstance(pos, dict) and 'error' in pos:
-                        return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
-                    return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
-                except Exception:
-                    return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
+            logger.error(f"Error processing command: {e}", exc_info=True)
+            
+            # More informative error handling
+            if "API key" in str(e) or "credentials" in str(e).lower():
+                return "I'm not properly configured with Google AI credentials. Please set the MINECRAFT_AGENT_GOOGLE_AI_API_KEY environment variable."
+            elif "model" in str(e).lower():
+                return f"There was an issue with the AI model configuration: {str(e)}"
             else:
-                return f"Sorry, I encountered an error processing '{command}': {str(e)}. ADK integration may need configuration."
+                return f"I encountered an error while processing your command: {str(e)}"
 
     async def demonstrate_capabilities(self):
         """Run a demonstration of agent capabilities"""
