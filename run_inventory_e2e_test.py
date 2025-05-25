@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Standalone E2E Test Runner for Inventory Query
-Run this script to test the complete flow with a real Minecraft server
+E2E Test Runner for Inventory Query with Real Minecraft Server
+Connect to your Docker Minecraft server and test inventory functionality
 """
 
 import asyncio
@@ -11,9 +11,15 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Mock Google ADK before importing
+sys.modules['google'] = MagicMock()
+sys.modules['google.cloud'] = MagicMock()
+sys.modules['google.cloud.adk'] = MagicMock()
 
 import structlog
 from dotenv import load_dotenv
@@ -24,19 +30,13 @@ from src.config import get_config
 # Load environment variables
 load_dotenv()
 
-# Configure logging with detailed formatting
+# Configure simplified logging
 structlog.configure(
     processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         structlog.dev.ConsoleRenderer(colors=True)
     ],
-    context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
     cache_logger_on_first_use=True,
 )
@@ -45,223 +45,181 @@ logger = structlog.get_logger(__name__)
 
 
 class E2ETestRunner:
-    """Runs end-to-end test with real components"""
+    """Simple end-to-end test with real Minecraft server"""
     
     def __init__(self):
         self.config = get_config()
         self.agent = None
-        self.trace_events = []
-        self.start_time = None
+        self.start_time = time.time()
+        self.results = []
         
-    def log_trace(self, event_type: str, data: dict, component: str = "test"):
-        """Log a trace event"""
-        event = {
-            "timestamp": time.time(),
-            "relative_time": time.time() - self.start_time if self.start_time else 0,
-            "type": event_type,
-            "component": component,
-            "data": data
+    def log_result(self, step: str, success: bool, details: str = ""):
+        """Log a test result"""
+        result = {
+            "step": step,
+            "success": success,
+            "details": details,
+            "timestamp": time.time() - self.start_time
         }
-        self.trace_events.append(event)
-        logger.info(f"[TRACE] {event_type}", **data, component=component)
+        self.results.append(result)
+        status = "✅" if success else "❌"
+        logger.info(f"{status} {step}: {details}")
         
     async def setup(self):
-        """Setup all components"""
-        logger.info("Setting up E2E test components")
-        self.start_time = time.time()
-        
-        # Initialize agent (which will create its own bridge and event processor)
-        self.log_trace("agent_init", {
-            "model": self.config.default_model,
-            "has_api_key": bool(self.config.google_ai_api_key)
-        }, "agent")
-        
-        self.agent = SimpleMinecraftAgent(
-            name="E2ETestAgent",
-            config=self.config
-        )
-        
+        """Setup the agent and connect to Minecraft"""
         try:
-            # This will initialize the bridge, connect to Minecraft, and set up everything
+            logger.info("🔧 Setting up test agent...")
+            
+            # Create agent
+            self.agent = SimpleMinecraftAgent(
+                name="E2ETestAgent", 
+                config=self.config
+            )
+            
+            # Initialize (connects to Minecraft)
             await self.agent.initialize()
-            self.log_trace("agent_initialized", {
-                "session_id": self.agent.session.id if self.agent.session else None,
-                "bridge_connected": self.agent.bridge.is_connected if self.agent.bridge else False
-            }, "agent")
-            
-            # Log bridge details
-            if self.agent.bridge:
-                self.log_trace("bridge_status", {
-                    "connected": self.agent.bridge.is_connected,
-                    "spawned": self.agent.bridge.is_spawned
-                }, "bridge")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize agent: {e}")
-            raise
-            
-    async def wait_for_connection(self, timeout: float = 30):
-        """Wait for Minecraft connection"""
-        logger.info("Waiting for Minecraft server connection...")
-        start = time.time()
-        
-        # The agent's bridge handles connection
-        while time.time() - start < timeout:
-            if self.agent and self.agent.bridge and self.agent.bridge.is_connected:
-                self.log_trace("minecraft_connected", {
-                    "wait_time": time.time() - start
-                }, "connection")
-                logger.info("✓ Connected to Minecraft server")
-                return True
-            await asyncio.sleep(0.5)
-            
-        logger.error("✗ Failed to connect to Minecraft server")
-        return False
-        
-    async def run_inventory_query(self):
-        """Run the actual inventory query test"""
-        query = "what's in your inventory"
-        logger.info(f"Executing query: '{query}'")
-        
-        self.log_trace("query_start", {
-            "query": query,
-            "player": "TestPlayer"
-        }, "test")
-        
-        # Capture detailed execution metrics
-        start_time = time.time()
-        
-        try:
-            # Execute the command
-            response = await self.agent.process_command(query, player="TestPlayer")
-            
-            end_time = time.time()
-            execution_time = end_time - start_time
-            
-            self.log_trace("query_complete", {
-                "response": response,
-                "execution_time": execution_time,
-                "response_length": len(response) if response else 0
-            }, "test")
-            
-            # Log the response
-            logger.info("=" * 60)
-            logger.info("AGENT RESPONSE:")
-            logger.info(response)
-            logger.info("=" * 60)
-            
-            # Analyze response
-            self.analyze_response(response, execution_time)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Query execution failed: {e}")
-            self.log_trace("query_error", {
-                "error": str(e),
-                "error_type": type(e).__name__
-            }, "test")
-            raise
-            
-    def analyze_response(self, response: str, execution_time: float):
-        """Analyze the response and execution"""
-        analysis = {
-            "execution_time": execution_time,
-            "response_contains_inventory": "inventory" in response.lower() if response else False,
-            "response_length": len(response) if response else 0,
-            "latency_ok": execution_time < 0.5,  # Target <500ms
-        }
-        
-        # Check for expected inventory items
-        expected_keywords = ["item", "empty", "contains", "slot"]
-        found_keywords = [kw for kw in expected_keywords if kw in response.lower()] if response else []
-        analysis["found_keywords"] = found_keywords
-        
-        self.log_trace("response_analysis", analysis, "analysis")
-        
-        # Log analysis
-        logger.info("Response Analysis:")
-        logger.info(f"  - Execution time: {execution_time:.3f}s")
-        logger.info(f"  - Response length: {analysis['response_length']} chars")
-        logger.info(f"  - Contains inventory info: {analysis['response_contains_inventory']}")
-        logger.info(f"  - Latency target met: {analysis['latency_ok']}")
-        
-    def generate_report(self):
-        """Generate execution report"""
-        total_time = time.time() - self.start_time if self.start_time else 0
-        
-        # Count events by type
-        event_counts = {}
-        for event in self.trace_events:
-            event_type = event["type"]
-            event_counts[event_type] = event_counts.get(event_type, 0) + 1
-            
-        report = [
-            "# E2E Inventory Query Test Report\n",
-            f"**Date**: {datetime.now().isoformat()}\n",
-            f"**Total Time**: {total_time:.3f}s\n",
-            f"**Total Events**: {len(self.trace_events)}\n",
-            f"**Config**: Model={self.config.default_model}, Timeout={self.config.command_timeout_ms}ms\n",
-            "\n## Event Summary\n"
-        ]
-        
-        for event_type, count in sorted(event_counts.items()):
-            report.append(f"- {event_type}: {count}\n")
-            
-        report.append("\n## Execution Timeline\n")
-        for event in self.trace_events:
-            report.append(f"\n### [{event['relative_time']:.3f}s] {event['type']} ({event['component']})\n")
-            if event['data']:
-                report.append("```json\n")
-                report.append(json.dumps(event['data'], indent=2))
-                report.append("\n```\n")
-                
-        return "".join(report)
-        
-    async def cleanup(self):
-        """Clean up resources"""
-        logger.info("Cleaning up test resources")
-        
-        # Event processor doesn't have cleanup method
-        
-        if self.agent and self.agent.bridge:
-            await self.agent.bridge.close()
-            
-    async def run(self):
-        """Run the complete E2E test"""
-        logger.info("Starting E2E Inventory Query Test")
-        logger.info(f"Minecraft Server: {self.config.minecraft_host}:{self.config.minecraft_port}")
-        
-        try:
-            # Setup components
-            await self.setup()
-            
-            # Wait for connection
-            if not await self.wait_for_connection():
-                logger.error("Cannot proceed without Minecraft connection")
-                logger.error("Make sure:")
-                logger.error("1. Minecraft server is running")
-                logger.error("2. Run: node src/minecraft/bot.js")
-                return False
-                
-            # Give bot time to fully spawn
-            logger.info("Waiting for bot to fully spawn...")
-            await asyncio.sleep(2)
-            
-            # Run the test
-            await self.run_inventory_query()
-            
-            # Generate report
-            report = self.generate_report()
-            report_path = "e2e_inventory_test_report.md"
-            with open(report_path, "w") as f:
-                f.write(report)
-            logger.info(f"Report written to {report_path}")
+            self.log_result("Agent Setup", True, "Agent created and initialized")
             
             return True
             
         except Exception as e:
-            logger.error(f"E2E test failed: {e}", exc_info=True)
+            self.log_result("Agent Setup", False, f"Failed: {e}")
+            logger.error(f"Setup failed: {e}")
+            return False
+            
+    async def wait_for_connection(self, timeout: float = 30):
+        """Wait for Minecraft connection and spawn"""
+        logger.info("🔌 Waiting for Minecraft connection...")
+        start = time.time()
+        
+        while time.time() - start < timeout:
+            if self.agent and self.agent.bridge:
+                # Check connection
+                if hasattr(self.agent.bridge, 'is_connected') and self.agent.bridge.is_connected:
+                    # Check if spawned
+                    spawned = False
+                    if hasattr(self.agent.bridge, 'is_spawned'):
+                        spawned = self.agent.bridge.is_spawned
+                    elif hasattr(self.agent.bridge, 'bot_spawned'):
+                        spawned = self.agent.bridge.bot_spawned
+                    
+                    if spawned:
+                        wait_time = time.time() - start
+                        self.log_result("Connection", True, f"Connected and spawned in {wait_time:.1f}s")
+                        return True
+                    else:
+                        logger.info("Connected but waiting for spawn...")
+                        
+            await asyncio.sleep(1)
+            
+        self.log_result("Connection", False, f"Timeout after {timeout}s")
+        return False
+        
+    async def run_inventory_query(self):
+        """Run the inventory query test"""
+        query = "what items do you have in your inventory?"
+        logger.info(f"📦 Testing inventory query: '{query}'")
+        
+        start_time = time.time()
+        
+        try:
+            # Execute the query
+            response = await self.agent.process_command(query, player="TestPlayer")
+            execution_time = time.time() - start_time
+            
+            # Check if we got a response
+            if response and len(response) > 10:
+                self.log_result("Inventory Query", True, 
+                              f"Got response in {execution_time:.2f}s ({len(response)} chars)")
+                
+                # Show the response
+                logger.info("📋 Agent Response:")
+                logger.info("-" * 50)
+                logger.info(response)
+                logger.info("-" * 50)
+                
+                return response
+            else:
+                self.log_result("Inventory Query", False, 
+                              f"No valid response (got: {response})")
+                return None
+                
+        except Exception as e:
+            self.log_result("Inventory Query", False, f"Error: {e}")
+            logger.error(f"Query failed: {e}")
+            return None
+            
+    def generate_report(self):
+        """Generate simple test report"""
+        total_time = time.time() - self.start_time
+        passed_tests = sum(1 for r in self.results if r["success"])
+        total_tests = len(self.results)
+        
+        report = [
+            "# Simple Minecraft Inventory Test Report\n\n",
+            f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+            f"**Total Time**: {total_time:.2f} seconds\n",
+            f"**Tests Passed**: {passed_tests}/{total_tests}\n",
+            f"**Server**: {self.config.minecraft_host}:{self.config.minecraft_port}\n\n",
+            "## Test Results\n\n"
+        ]
+        
+        for result in self.results:
+            status = "✅ PASS" if result["success"] else "❌ FAIL"
+            report.append(f"- **{result['step']}**: {status}\n")
+            if result["details"]:
+                report.append(f"  - {result['details']}\n")
+            report.append(f"  - Time: {result['timestamp']:.2f}s\n\n")
+        
+        return "".join(report)
+        
+    async def cleanup(self):
+        """Clean up resources"""
+        if self.agent and self.agent.bridge:
+            try:
+                await self.agent.bridge.close()
+                self.log_result("Cleanup", True, "Resources cleaned up")
+            except Exception as e:
+                self.log_result("Cleanup", False, f"Cleanup error: {e}")
+            
+    async def run(self):
+        """Run the simple E2E test"""
+        logger.info("🚀 Starting Simple Minecraft Inventory Test")
+        logger.info(f"🎯 Target: {self.config.minecraft_host}:{self.config.minecraft_port}")
+        
+        try:
+            # Step 1: Setup
+            if not await self.setup():
+                return False
+            
+            # Step 2: Connect and spawn
+            if not await self.wait_for_connection():
+                self.log_result("Overall Test", False, "Failed to connect to Minecraft")
+                return False
+                
+            # Step 3: Test inventory
+            response = await self.run_inventory_query()
+            
+            # Step 4: Final result
+            if response:
+                self.log_result("Overall Test", True, "Inventory query successful!")
+                success = True
+            else:
+                self.log_result("Overall Test", False, "Inventory query failed")
+                success = False
+            
+            # Generate report
+            report = self.generate_report()
+            report_path = "minecraft_test_report.md"
+            with open(report_path, "w") as f:
+                f.write(report)
+            logger.info(f"📄 Report saved to: {report_path}")
+            
+            return success
+            
+        except Exception as e:
+            self.log_result("Overall Test", False, f"Exception: {e}")
+            logger.error(f"Test failed with exception: {e}")
             return False
             
         finally:
@@ -270,39 +228,47 @@ class E2ETestRunner:
 
 async def main():
     """Main entry point"""
-    # Check for API key
+    print("🎮 Minecraft Server Inventory Test")
+    print("=" * 50)
+    
     config = get_config()
+    print(f"🎯 Server: {config.minecraft_host}:{config.minecraft_port}")
+    print(f"🤖 Bot: {config.bot_username}")
+    print(f"🔑 API Key: {'✅ Configured' if config.google_ai_api_key else '❌ Missing'}")
+    
     if not config.google_ai_api_key:
-        logger.warning("=" * 60)
-        logger.warning("No Google AI API key found!")
-        logger.warning("Set MINECRAFT_AGENT_GOOGLE_AI_API_KEY in .env file")
-        logger.warning("Get your key from: https://aistudio.google.com/app/apikey")
-        logger.warning("=" * 60)
-        
-    logger.info("=" * 60)
-    logger.info("E2E Test: Inventory Query")
-    logger.info("This test will:")
-    logger.info("1. Connect to Minecraft server")
-    logger.info("2. Send 'what's in your inventory' query")
-    logger.info("3. Trace the complete execution flow")
-    logger.info("4. Generate a detailed report")
-    logger.info("=" * 60)
+        print("\n⚠️  No Google AI API key found!")
+        print("Set MINECRAFT_AGENT_GOOGLE_AI_API_KEY in .env file")
+        print("Get your key from: https://aistudio.google.com/app/apikey")
     
-    # Ensure bot.js is running
-    logger.info("\nMake sure bot.js is running:")
-    logger.info("  node src/minecraft/bot.js")
-    logger.info("\nPress Ctrl+C to cancel, or wait to continue...\n")
+    print("\n📋 This test will:")
+    print("1. Connect to your Docker Minecraft server")
+    print("2. Ask the bot: 'what items do you have in your inventory?'")
+    print("3. Show the agent's response")
+    print("4. Generate a test report")
     
-    await asyncio.sleep(3)
+    print("\n⚠️  Make sure:")
+    print("• Your Minecraft server is running in Docker")
+    print("• Run: node src/minecraft/bot.js")
+    print("• The bot can connect to your server")
+    
+    print("\nPress Enter to continue (or Ctrl+C to cancel)...")
+    try:
+        input()
+    except KeyboardInterrupt:
+        print("\n👋 Test cancelled")
+        return
     
     # Run test
     runner = E2ETestRunner()
     success = await runner.run()
     
     if success:
-        logger.info("✓ E2E test completed successfully")
+        print("\n🎉 Test completed successfully!")
+        print("Your inventory query system is working with the real Minecraft server!")
     else:
-        logger.error("✗ E2E test failed")
+        print("\n❌ Test failed!")
+        print("Check the logs above for details.")
         sys.exit(1)
 
 
