@@ -87,8 +87,8 @@ async def place_block(
     x: int,
     y: int,
     z: int,
-    block_type: str = "stone",
-    face: str = "top",
+    block_type: str,
+    face: str,
 ) -> Dict[str, Any]:
     """Place a block at specified coordinates.
 
@@ -134,8 +134,8 @@ async def place_block(
 
 async def find_blocks(
     block_name: str,
-    max_distance: int = 64,
-    count: int = 10,
+    max_distance: int,
+    count: int,
 ) -> Dict[str, Any]:
     """Find blocks of a specific type near the bot.
 
@@ -213,7 +213,7 @@ async def get_inventory() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def craft_item(recipe: str, count: int = 1) -> Dict[str, Any]:
+async def craft_item(recipe: str, count: int) -> Dict[str, Any]:
     """Craft an item using available materials.
 
     Args:

@@ -10,6 +10,8 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+from ..config import AgentConfig, get_config, setup_google_ai_credentials
+
 from ..bridge.bridge_manager import BridgeConfig, BridgeManager
 from ..bridge.event_stream import EventProcessor, EventStream
 from ..tools.mineflayer_tools import create_mineflayer_tools
@@ -20,9 +22,10 @@ logger = structlog.get_logger(__name__)
 class SimpleMinecraftAgent:
     """A simple Minecraft agent that can perform basic tasks"""
 
-    def __init__(self, name: str = "MinecraftAgent", model: str = "gemini-2.0-flash"):
+    def __init__(self, name: str = "MinecraftAgent", model: str = None, config: AgentConfig = None):
+        self.config = config or get_config()
         self.name = name
-        self.model = model
+        self.model = model or self.config.default_model
         self.bridge = None
         self.event_stream = None
         self.event_processor = None
@@ -30,16 +33,26 @@ class SimpleMinecraftAgent:
         self.runner = None
         self.session = None
         self.session_manager = InMemorySessionService()
+        
+        # Setup Google AI credentials
+        try:
+            self.ai_credentials = setup_google_ai_credentials(self.config)
+            logger.info("Google AI credentials configured successfully")
+        except ValueError as e:
+            logger.warning(f"Google AI credentials not configured: {e}")
+            self.ai_credentials = None
 
     async def initialize(self):
         """Initialize the agent and all components"""
         logger.info(f"Initializing {self.name}")
 
-        # Initialize bridge
-        config = BridgeConfig(
-            command_timeout=10000, batch_size=5  # 10 seconds for Minecraft operations
+        # Initialize bridge with config
+        bridge_config = BridgeConfig(
+            command_timeout=self.config.command_timeout_ms,
+            batch_size=5,
+            event_queue_size=self.config.event_queue_size
         )
-        self.bridge = BridgeManager(config)
+        self.bridge = BridgeManager(bridge_config)
         await self.bridge.initialize()
 
         # Use the event stream from bridge (already started)
@@ -57,18 +70,25 @@ class SimpleMinecraftAgent:
         # Create ADK agent with tools
         tools = create_mineflayer_tools(self.bridge)
 
-        self.agent = LlmAgent(
-            name=self.name,
-            model=self.model,
-            instruction=self._get_agent_instruction(),
-            description="A Minecraft bot that can move, dig, build, and interact with the world",
-            tools=tools,
-            output_key="agent_response",
-            generate_content_config=types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=500
+        # Prepare agent configuration
+        agent_kwargs = {
+            "name": self.name,
+            "model": self.model,
+            "instruction": self._get_agent_instruction(),
+            "description": "A Minecraft bot that can move, dig, build, and interact with the world",
+            "tools": tools,
+            "output_key": "agent_response",
+            "generate_content_config": types.GenerateContentConfig(
+                temperature=self.config.agent_temperature,
+                max_output_tokens=self.config.max_output_tokens
             )
-        )
+        }
+        
+        # Add credentials if available
+        if self.ai_credentials:
+            agent_kwargs.update(self.ai_credentials)
+        
+        self.agent = LlmAgent(**agent_kwargs)
 
         # Create runner for agent execution
         self.runner = Runner(
