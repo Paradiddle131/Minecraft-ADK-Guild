@@ -138,7 +138,7 @@ class BridgeManager:
             await asyncio.sleep(0.1)
 
     async def _wait_for_spawn_with_timeout(self, timeout: float = 10.0) -> bool:
-        """[OPTION 2: Listen for custom event] Wait for bot to spawn in the world with timeout
+        """Wait for bot to spawn in the world with timeout using minecraft:spawn event
         
         Returns:
             bool: True if spawned, False if timeout
@@ -146,18 +146,18 @@ class BridgeManager:
         spawn_event = asyncio.Event()
         spawn_data = {}
 
-        def on_python_ready(data):
-            logger.info(f"Received python_ready event: {data}")
+        def on_minecraft_spawn(data):
+            logger.info(f"Received minecraft:spawn event: {data}")
             spawn_data.update(data)
             spawn_event.set()
 
         from javascript import On
-        # Option 2: Listen for custom event instead of spawn
-        spawn_listener = On(self.bot, "python_ready")(on_python_ready)
+        # Listen for standardized minecraft:spawn event
+        spawn_listener = On(self.bot, "minecraft:spawn")(on_minecraft_spawn)
 
         try:
             await asyncio.wait_for(spawn_event.wait(), timeout=timeout)
-            logger.info(f"Bot spawned successfully via python_ready event (Option 2): {spawn_data}")
+            logger.info(f"Bot spawned successfully via minecraft:spawn event: {spawn_data}")
             return True
         except asyncio.TimeoutError:
             logger.warning(f"Bot spawn timeout after {timeout}s - server may not be running")

@@ -6,6 +6,7 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const winston = require('winston');
 const { EventEmitter } = require('events');
 const dotenv = require('dotenv');
+const { MinecraftEventEmitter } = require('./MinecraftEventEmitter');
 
 // Load environment variables
 dotenv.config();
@@ -36,6 +37,7 @@ class MinecraftBot {
         this.options = options;
         this.bot = null;
         this.events = new BotEventEmitter();
+        this.eventEmitter = null; // Will be initialized after bot creation
         this.movements = null;
         this.commandQueue = [];
         this.isProcessingCommands = false;
@@ -55,6 +57,9 @@ class MinecraftBot {
         // Load pathfinder plugin
         this.bot.loadPlugin(pathfinder);
 
+        // Initialize event emitter with bot
+        this.eventEmitter = new MinecraftEventEmitter(this.bot);
+
         // Set up event handlers
         this.setupEventHandlers();
 
@@ -64,13 +69,9 @@ class MinecraftBot {
                 logger.info('Bot spawned');
                 this.setupPathfinder();
                 
-                // Option 2: Emit custom event for Python
-                this.bot.emit('python_ready', {
-                    spawned: true,
-                    position: this.bot.entity?.position,
-                    time: Date.now()
-                });
-                logger.info('Emitted python_ready event');
+                // Emit standardized spawn event using event emitter
+                this.eventEmitter.emitSpawnEvent();
+                logger.info('Emitted minecraft:spawn event via MinecraftEventEmitter');
                 
                 resolve();
             });
@@ -96,31 +97,68 @@ class MinecraftBot {
     }
 
     setupEventHandlers() {
-        // Forward all relevant events to Python
-        const eventsToForward = [
-            'chat', 'whisper', 'actionBar', 'title',
-            'health', 'breath', 'spawn', 'death', 'respawn',
-            'playerJoined', 'playerLeft', 'playerUpdated',
-            'blockUpdate', 'chunkColumnLoad',
-            'entitySpawn', 'entityGone', 'entityMoved',
-            'kicked', 'error', 'end'
-        ];
+        // Chat events
+        this.bot.on('chat', (username, message) => {
+            this.eventEmitter.emitChatEvent(username, message);
+        });
 
-        eventsToForward.forEach(eventName => {
+        // Player events
+        this.bot.on('playerJoined', (player) => {
+            this.eventEmitter.emitPlayerJoinedEvent(player);
+        });
+
+        this.bot.on('playerLeft', (player) => {
+            this.eventEmitter.emitPlayerLeftEvent(player);
+        });
+
+        // Health events
+        this.bot.on('health', () => {
+            this.eventEmitter.emitHealthEvent();
+        });
+
+        // Position updates (throttled)
+        let lastPositionEmit = 0;
+        const positionThrottle = 1000; // Emit position max once per second
+        
+        this.bot.on('move', () => {
+            const now = Date.now();
+            if (now - lastPositionEmit > positionThrottle) {
+                this.eventEmitter.emitPositionEvent();
+                lastPositionEmit = now;
+            }
+        });
+
+        // Block events
+        this.bot.on('blockUpdate', (oldBlock, newBlock) => {
+            this.eventEmitter.emitBlockUpdateEvent(oldBlock, newBlock);
+        });
+
+        // Entity events
+        this.bot.on('entitySpawn', (entity) => {
+            this.eventEmitter.emitEntitySpawnEvent(entity);
+        });
+
+        this.bot.on('entityGone', (entity) => {
+            this.eventEmitter.emitEntityDeathEvent(entity);
+        });
+
+        // Inventory events
+        this.bot.on('windowUpdate', (slot, _oldItem, newItem) => {
+            if (slot < this.bot.inventory.inventoryStart || 
+                slot >= this.bot.inventory.inventoryEnd) {
+                return; // Only track main inventory
+            }
+            
+            const inventorySlot = slot - this.bot.inventory.inventoryStart;
+            this.eventEmitter.emitInventoryChangeEvent(inventorySlot, newItem);
+        });
+
+        // Error and connection events - forward to legacy handler
+        const legacyEvents = ['error', 'end', 'kicked'];
+        legacyEvents.forEach(eventName => {
             this.bot.on(eventName, (...args) => {
                 this.handleEvent(eventName, args);
             });
-        });
-
-        // Special handling for position updates
-        this.bot.on('move', () => {
-            this.handleEvent('position', [{
-                x: this.bot.entity.position.x,
-                y: this.bot.entity.position.y,
-                z: this.bot.entity.position.z,
-                yaw: this.bot.entity.yaw,
-                pitch: this.bot.entity.pitch
-            }]);
         });
     }
 
