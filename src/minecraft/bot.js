@@ -63,6 +63,15 @@ class MinecraftBot {
             this.bot.once('spawn', () => {
                 logger.info('Bot spawned');
                 this.setupPathfinder();
+                
+                // Option 2: Emit custom event for Python
+                this.bot.emit('python_ready', {
+                    spawned: true,
+                    position: this.bot.entity?.position,
+                    time: Date.now()
+                });
+                logger.info('Emitted python_ready event');
+                
                 resolve();
             });
 
