@@ -106,7 +106,7 @@ class PriorityEventQueue:
         logger.info("PriorityEventQueue initialized",
                    max_size=max_size,
                    worker_count=worker_count,
-                   batch_configs=len(batch_configs))
+                   batch_configs=len(self.batch_configs))
     
     async def start(self):
         """Start the queue processing workers"""

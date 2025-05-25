@@ -16,7 +16,7 @@ from pathlib import Path
 from enum import Enum
 from collections import defaultdict, deque
 
-from .payload_schemas import CommonEventPayload
+from .payload_schemas import BaseEventPayload
 
 
 class TraceLevel(Enum):

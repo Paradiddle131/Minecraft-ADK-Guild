@@ -15,7 +15,7 @@ import statistics
 import json
 from pathlib import Path
 
-from .payload_schemas import CommonEventPayload
+from .payload_schemas import BaseEventPayload
 
 
 @dataclass

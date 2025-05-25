@@ -2,7 +2,7 @@
 Event Registry - Centralized event definitions and metadata for Minecraft-ADK bridge
 """
 from dataclasses import dataclass
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Type, Optional, List
 from pydantic import BaseModel
 import structlog
 
