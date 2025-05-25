@@ -62,37 +62,39 @@ class TestADKIntegration:
         # Create agent
         agent = SimpleMinecraftAgent(config=adk_test_config)
         
-        # Mock the bridge initialization
-        with patch.object(agent, 'bridge', mock_bridge_for_adk):
-            # Mock event processor
-            mock_event_processor = MagicMock()
-            mock_event_processor.get_world_state.return_value = {
-                "nearby_players": [],
-                "recent_blocks": []
-            }
-            
-            with patch.object(agent, 'event_processor', mock_event_processor):
-                # Mock the runner to avoid actual API calls
-                mock_runner = AsyncMock()
-                
-                # Create a mock event that simulates ADK response
-                mock_event = MagicMock()
-                mock_event.is_final_response.return_value = True
-                mock_event.content = MagicMock()
-                mock_event.content.parts = [MagicMock(text="I found stone at position x=10, y=64, z=-5")]
-                
-                # Make runner return our mock event
-                async def mock_run_async(*args, **kwargs):
-                    yield mock_event
-                
-                mock_runner.run_async = mock_run_async
-                
-                with patch.object(agent, 'runner', mock_runner):
-                    # Test command processing
-                    response = await agent.process_command("Find stone blocks nearby")
-                    
-                    assert response == "I found stone at position x=10, y=64, z=-5"
-                    assert mock_runner.run_async.called
+        # Initialize necessary components
+        agent.bridge = mock_bridge_for_adk
+        agent.event_processor = MagicMock()
+        agent.event_processor.get_world_state.return_value = {
+            "nearby_players": [],
+            "recent_blocks": []
+        }
+        
+        # Create a mock session
+        mock_session = MagicMock()
+        mock_session.state = {}
+        agent.session = mock_session
+        
+        # Mock the runner to avoid actual API calls
+        mock_runner = AsyncMock()
+        
+        # Create a mock event that simulates ADK response
+        mock_event = MagicMock()
+        mock_event.is_final_response.return_value = True
+        mock_event.content = MagicMock()
+        mock_event.content.parts = [MagicMock(text="I found stone at position x=10, y=64, z=-5")]
+        
+        # Make runner return our mock event
+        async def mock_run_async(*args, **kwargs):
+            yield mock_event
+        
+        mock_runner.run_async = mock_run_async
+        agent.runner = mock_runner
+        
+        # Test command processing
+        response = await agent.process_command("Find stone blocks nearby")
+        
+        assert response == "I found stone at position x=10, y=64, z=-5"
     
     @pytest.mark.asyncio
     async def test_enhanced_agent_conversation_tracking(self, adk_test_config, mock_bridge_for_adk):
@@ -198,14 +200,13 @@ class TestADKErrorHandling:
     async def test_agent_handles_missing_credentials(self, mock_bridge_for_adk):
         """Test agent behavior when Google AI credentials are missing"""
         
-        # Create config without API key
-        config = AgentConfig()
-        
-        agent = SimpleMinecraftAgent(config=config)
-        
-        # Agent should initialize but warn about missing credentials
-        with patch.object(agent, 'bridge', mock_bridge_for_adk):
-            assert agent.ai_credentials is None
+        # Create config without API key and mock environment
+        with patch.dict(os.environ, {}, clear=True):
+            config = AgentConfig()
+            
+            # Expect ValueError when no credentials are found
+            with pytest.raises(ValueError, match="No Google AI credentials found"):
+                agent = SimpleMinecraftAgent(config=config)
     
     @pytest.mark.asyncio
     async def test_fallback_on_adk_failure(self, adk_test_config, mock_bridge_for_adk):
@@ -239,33 +240,38 @@ async def test_adk_performance_baseline(adk_test_config, mock_bridge_for_adk):
     
     agent = SimpleMinecraftAgent(config=adk_test_config)
     
-    with patch.object(agent, 'bridge', mock_bridge_for_adk):
-        mock_event_processor = MagicMock()
-        mock_event_processor.get_world_state.return_value = {}
-        
-        with patch.object(agent, 'event_processor', mock_event_processor):
-            # Mock fast ADK response
-            mock_runner = AsyncMock()
-            
-            mock_event = MagicMock()
-            mock_event.is_final_response.return_value = True
-            mock_event.content = MagicMock()
-            mock_event.content.parts = [MagicMock(text="Response")]
-            
-            async def mock_run_async(*args, **kwargs):
-                await asyncio.sleep(0.05)  # Simulate 50ms latency
-                yield mock_event
-            
-            mock_runner.run_async = mock_run_async
-            
-            with patch.object(agent, 'runner', mock_runner):
-                # Measure command latency
-                start = time.time()
-                response = await agent.process_command("test command")
-                latency = (time.time() - start) * 1000  # Convert to ms
-                
-                assert response == "Response"
-                assert latency < 500  # Should be under 500ms for Phase 1
-                
-                # Log performance metric
-                print(f"ADK command latency: {latency:.2f}ms")
+    # Initialize necessary components
+    agent.bridge = mock_bridge_for_adk
+    agent.event_processor = MagicMock()
+    agent.event_processor.get_world_state.return_value = {}
+    
+    # Create a mock session
+    mock_session = MagicMock()
+    mock_session.state = {}
+    agent.session = mock_session
+    
+    # Mock fast ADK response
+    mock_runner = AsyncMock()
+    
+    mock_event = MagicMock()
+    mock_event.is_final_response.return_value = True
+    mock_event.content = MagicMock()
+    mock_event.content.parts = [MagicMock(text="Response")]
+    
+    async def mock_run_async(*args, **kwargs):
+        await asyncio.sleep(0.05)  # Simulate 50ms latency
+        yield mock_event
+    
+    mock_runner.run_async = mock_run_async
+    agent.runner = mock_runner
+    
+    # Measure command latency
+    start = time.time()
+    response = await agent.process_command("test command")
+    latency = (time.time() - start) * 1000  # Convert to ms
+    
+    assert response == "Response"
+    assert latency < 500  # Should be under 500ms for Phase 1
+    
+    # Log performance metric
+    print(f"ADK command latency: {latency:.2f}ms")
