@@ -1,3 +1,1 @@
-from .simple_agent import SimpleMinecraftAgent
-
-__all__ = ["SimpleMinecraftAgent"]
+# Agents module - to be populated with new agent implementations

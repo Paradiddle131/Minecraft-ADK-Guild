@@ -7,32 +7,16 @@ requires-python = ">=3.11"
 dependencies = [
     "google-adk>=0.1.0",
     "javascript>=1.2.2",
-    "aiohttp>=3.9.0",
     "websockets>=12.0",
-    "redis>=5.0.0",
-    "sqlalchemy>=2.0.0",
-    "aiosqlite>=0.19.0",
-    "prometheus-client>=0.19.0",
     "structlog>=24.0.0",
-    "rich>=13.0.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "tenacity>=8.2.0",
-    "numpy>=1.26.0",
-    "pytest>=8.3.5",
-    "lz4>=4.4.4",
-    "psutil>=7.0.0",
-    "msgpack>=1.1.0",
-    "pytest-asyncio>=0.26.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-mock>=3.12.0",
-    "pytest-cov>=4.1.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
@@ -58,7 +42,3 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-pythonpath = ["src"]
