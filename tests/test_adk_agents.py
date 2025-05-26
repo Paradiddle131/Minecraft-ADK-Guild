@@ -201,12 +201,12 @@ class TestConfiguration:
         config = AgentConfig(
             default_model="gemini-1.5-pro",
             agent_temperature=0.5,
-            minecraft_port=25566
+            minecraft_port=25565
         )
         
         assert config.default_model == "gemini-1.5-pro"
         assert config.agent_temperature == 0.5
-        assert config.minecraft_port == 25566
+        assert config.minecraft_port == 25565
     
     def test_config_credentials_setup(self):
         """Test credential setup"""

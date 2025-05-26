@@ -2,6 +2,7 @@
 Simple Minecraft Agent - POC for single agent with Mineflayer tools
 """
 import asyncio
+import os
 from typing import Optional
 
 import structlog
@@ -51,20 +52,12 @@ class SimpleMinecraftAgent:
             batch_size=5,
             event_queue_size=self.config.event_queue_size
         )
-        self.bridge = BridgeManager(bridge_config)
+        self.bridge = BridgeManager(bridge_config, self.config)
+        logger.info("Starting bridge initialization...")
         await self.bridge.initialize()
+        logger.info(f"Bridge initialized. Connected: {self.bridge.is_connected}, Spawned: {self.bridge.is_spawned}")
 
-        # Use the event stream from bridge (already started)
-        self.event_stream = self.bridge.event_stream
-
-        # Set up event processing
         self.event_processor = EventProcessor()
-        self.event_stream.register_handler("position", self.event_processor.process_position_event)
-        self.event_stream.register_handler(
-            "playerJoined", self.event_processor.process_player_event
-        )
-        self.event_stream.register_handler("playerLeft", self.event_processor.process_player_event)
-        self.event_stream.register_handler("blockUpdate", self.event_processor.process_block_update)
 
         # Create ADK agent with tools
         tools = create_mineflayer_tools(self.bridge)
@@ -83,9 +76,10 @@ class SimpleMinecraftAgent:
             )
         }
 
-        # Add credentials if available
-        if self.ai_credentials:
-            agent_kwargs.update(self.ai_credentials)
+        # Set API key in environment for ADK
+        if self.ai_credentials and 'api_key' in self.ai_credentials:
+            os.environ["GOOGLE_API_KEY"] = self.ai_credentials['api_key']
+            logger.info("Set GOOGLE_API_KEY in environment")
 
         self.agent = LlmAgent(**agent_kwargs)
 
@@ -197,25 +191,7 @@ Be helpful, efficient, and safe in your actions. Always respond with your planne
 
         except Exception as e:
             logger.error(f"Error processing command: {e}")
-            # Fallback for testing without proper ADK setup
-            if "inventory" in command.lower():
-                try:
-                    inventory_result = await self.bridge.get_inventory()
-                    if isinstance(inventory_result, dict) and 'error' in inventory_result:
-                        return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-                    return f"My current inventory contains: {inventory_result}"
-                except Exception:
-                    return "I cannot access my inventory because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable inventory commands."
-            elif "position" in command.lower():
-                try:
-                    pos = await self.bridge.get_position()
-                    if isinstance(pos, dict) and 'error' in pos:
-                        return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
-                    return f"I am currently at position: x={pos['x']}, y={pos['y']}, z={pos['z']}"
-                except Exception:
-                    return "I cannot get my position because I'm not connected to a Minecraft server. Please start a Minecraft server on localhost:25565 to enable position commands."
-            else:
-                return f"Sorry, I encountered an error processing '{command}': {str(e)}. ADK integration may need configuration."
+            return f"Sorry, I encountered an error processing '{command}': {str(e)}"
 
     async def demonstrate_capabilities(self):
         """Run a demonstration of agent capabilities"""

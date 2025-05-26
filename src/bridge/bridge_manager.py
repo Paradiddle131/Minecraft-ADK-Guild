@@ -2,12 +2,16 @@
 JSPyBridge Manager - Handles Python to JavaScript communication with Mineflayer
 """
 import asyncio
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+if TYPE_CHECKING:
+    from ..config import AgentConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -37,8 +41,9 @@ class Command:
 class BridgeManager:
     """Manages communication between Python ADK agents and JavaScript Mineflayer bot"""
 
-    def __init__(self, config: BridgeConfig = None):
+    def __init__(self, config: BridgeConfig = None, agent_config: Optional['AgentConfig'] = None):
         self.config = config or BridgeConfig()
+        self.agent_config = agent_config
         self.bot = None
         self.event_handlers = {}
         self.command_queue = asyncio.PriorityQueue(maxsize=self.config.event_queue_size)
@@ -72,13 +77,29 @@ class BridgeManager:
             finally:
                 os.chdir(original_cwd)
 
-            await self._start_event_server()
-            await asyncio.sleep(2.0)
 
-            logger.info("Starting bot and waiting for readiness...")
-
+            # Get minecraft configuration from environment or defaults
+            # Use agent_config if provided, otherwise fall back to environment variables
+            if self.agent_config:
+                minecraft_host = self.agent_config.minecraft_host
+                minecraft_port = self.agent_config.minecraft_port
+                bot_username = self.agent_config.bot_username
+                minecraft_version = self.agent_config.minecraft_version
+            else:
+                minecraft_host = os.getenv('MINECRAFT_AGENT_MINECRAFT_HOST', 'localhost')
+                minecraft_port = int(os.getenv('MINECRAFT_AGENT_MINECRAFT_PORT', '25565'))
+                bot_username = os.getenv('MINECRAFT_AGENT_BOT_USERNAME', 'MinecraftAgent')
+                minecraft_version = os.getenv('MINECRAFT_AGENT_MINECRAFT_VERSION', '1.21')
+            
+            logger.info(f"Starting bot with configuration: host={minecraft_host}, port={minecraft_port}, username={bot_username}, version={minecraft_version}")
+            
             bot_result = self.bot_module.startBot({
-                'enableEventClient': True,
+                'host': minecraft_host,
+                'port': minecraft_port,
+                'username': bot_username,
+                'auth': 'offline',
+                'version': minecraft_version,
+                'enableEventClient': False,
                 'timeout': 60000
             }, timeout=90000)
 
@@ -91,8 +112,9 @@ class BridgeManager:
 
             if not hasattr(bot_result, 'bot') or bot_result.bot is None:
                 logger.error("Bot initialization failed - no bot object returned")
-                raise TimeoutError("Bot failed to initialize - check if Minecraft server is running on localhost:25565")
+                raise TimeoutError(f"Bot failed to initialize - check if Minecraft server is running on {minecraft_host}:{minecraft_port}")
 
+            # bot_result.bot is a MinecraftBot instance with executeCommand method
             self.bot = bot_result.bot
             self.event_client = bot_result.eventClient
 
@@ -119,48 +141,34 @@ class BridgeManager:
             logger.error("Failed to initialize bridge", error=str(e))
             raise
 
-    async def _start_event_server(self):
-        """Start the WebSocket event server for JavaScript clients"""
-        from ..bridge.event_stream import EventStream
-
-        self.event_stream = EventStream(port=8765)
-        await self.event_stream.start()
-        logger.info("Event stream server started on port 8765")
-
-    async def _wait_for_bot_ready(self, bot_result):
-        """Wait for bot initialization to complete"""
-        while True:
-            try:
-                if hasattr(bot_result, 'bot') and bot_result.bot is not None:
-                    break
-            except Exception:
-                pass
-            await asyncio.sleep(0.1)
-
-    async def _wait_for_spawn_with_timeout(self, timeout: float = 10.0) -> bool:
+    async def _wait_for_spawn_with_timeout(self, timeout: float = 30.0) -> bool:
         """Wait for bot to spawn in the world with timeout
         
         Returns:
             bool: True if spawned, False if timeout
         """
-        spawn_event = asyncio.Event()
-
-        def on_spawn():
-            spawn_event.set()
-
-        from javascript import On
-        spawn_listener = On(self.bot, "spawn")(on_spawn)
-
-        try:
-            await asyncio.wait_for(spawn_event.wait(), timeout=timeout)
-            logger.info("Bot spawned successfully")
-            return True
-        except asyncio.TimeoutError:
-            logger.warning(f"Bot spawn timeout after {timeout}s - server may not be running")
-            return False
-        finally:
-            if hasattr(spawn_listener, 'destroy'):
-                spawn_listener.destroy()
+        # Check if bot is already spawned
+        start_time = asyncio.get_event_loop().time()
+        
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                # Check if bot has entity (means it's spawned)
+                if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'entity') and self.bot.bot.entity is not None:
+                    logger.info("Bot spawned successfully - entity exists")
+                    return True
+                    
+                # Also check health as an indicator of spawn
+                if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'health') and self.bot.bot.health is not None:
+                    logger.info(f"Bot spawned successfully - health: {self.bot.bot.health}")
+                    return True
+                    
+            except Exception as e:
+                logger.debug(f"Error checking spawn status: {e}")
+                
+            await asyncio.sleep(0.5)
+        
+        logger.warning(f"Bot spawn timeout after {timeout}s - server may not be running")
+        return False
 
     async def _setup_event_listeners(self):
         """Set up event listeners for bot events"""
@@ -178,11 +186,13 @@ class BridgeManager:
         ]
 
         for event in events:
-            self.bot.on(event, lambda *args, evt=event: self._handle_event(evt, args))
+            if hasattr(self.bot, 'bot'):
+                self.bot.bot.on(event, lambda *args, evt=event: self._handle_event(evt, args))
 
     def _handle_event(self, event_type: str, args):
         """Handle events from the Minecraft bot"""
-        logger.debug(f"Received event: {event_type}", args=args)
+        # Only log event type, not the full args to avoid massive objects
+        logger.debug(f"Received event: {event_type}")
 
         event_data = {
             "type": event_type,
@@ -284,20 +294,48 @@ class BridgeManager:
         """Execute a single command with retry logic"""
         logger.debug("Executing command", method=command.method, args=command.args)
 
-        # Get the method from bot
-        method_parts = command.method.split(".")
-        obj = self.bot
-
-        for part in method_parts:
-            obj = getattr(obj, part)
-
-        # Call the method
-        if asyncio.iscoroutinefunction(obj):
-            result = await obj(**command.args)
+        # Route to the MinecraftBot's command handlers via direct property access
+        # Note: Can't use await on JSPyBridge Proxy objects directly
+        
+        # For entity.position and other info commands, access the mineflayer bot directly
+        if command.method == "entity.position":
+            if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'entity') and self.bot.bot.entity:
+                return self.bot.bot.entity.position
+            else:
+                raise RuntimeError("Bot entity not available - bot may not be spawned")
+        
+        elif command.method == "entity.health":
+            if hasattr(self.bot, 'bot'):
+                return {
+                    'health': getattr(self.bot.bot, 'health', None),
+                    'food': getattr(self.bot.bot, 'food', None),
+                    'saturation': getattr(self.bot.bot, 'foodSaturation', None)
+                }
+            else:
+                raise RuntimeError("Bot not available")
+        
+        elif command.method == "inventory.items":
+            if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'inventory'):
+                items = self.bot.bot.inventory.items()
+                return [{'name': item.name, 'count': item.count, 'slot': item.slot} for item in items]
+            else:
+                raise RuntimeError("Bot inventory not available")
+        
         else:
-            result = obj(**command.args)
+            # For other commands, try direct property access
+            method_parts = command.method.split(".")
+            obj = self.bot
 
-        return result
+            for part in method_parts:
+                obj = getattr(obj, part)
+
+            # Call the method
+            if asyncio.iscoroutinefunction(obj):
+                result = await obj(**command.args)
+            else:
+                result = obj(**command.args)
+
+            return result
 
     async def close(self):
         """Close the bridge and cleanup resources"""
@@ -307,10 +345,11 @@ class BridgeManager:
             self._command_processor_task.cancel()
 
         if self.bot:
-            self.bot.quit()
+            if hasattr(self.bot, 'quit'):
+                self.bot.quit()
+            elif hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'quit'):
+                self.bot.bot.quit()
 
-        if hasattr(self, 'event_stream') and self.event_stream:
-            await self.event_stream.stop()
 
         self.is_connected = False
         logger.info("Bridge closed")

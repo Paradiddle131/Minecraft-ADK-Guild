@@ -1,0 +1,31 @@
+{
+  "test_name": "option1_mock_test",
+  "start_time": "2025-05-25T20:48:42.501298",
+  "metrics": [
+    {
+      "metric": "initialization_time",
+      "value": 2.0116615295410156,
+      "details": {
+        "description": "Time to initialize bridge with Option 1"
+      }
+    },
+    {
+      "metric": "spawn_detected",
+      "value": true,
+      "details": {
+        "description": "Whether spawn was detected immediately"
+      }
+    },
+    {
+      "metric": "test_passed",
+      "value": true,
+      "details": {
+        "spawn_trust": "Python trusted bot.js spawn handling",
+        "no_wait": "No additional spawn wait performed"
+      }
+    }
+  ],
+  "end_time": "2025-05-25T20:48:44.534027",
+  "total_duration": 2.0327281951904297,
+  "success": true
+}
