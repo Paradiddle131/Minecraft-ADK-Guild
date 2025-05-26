@@ -242,12 +242,12 @@ class MinecraftBot {
             }
         });
 
-        // Crafting events (if available)
-        if (this.bot.supportFeature('craft')) {
-            this.bot.on('craft', (recipe, result) => {
-                this.eventEmitter.emitItemCraftEvent(recipe.name, result, recipe.ingredients);
-            });
-        }
+        // Crafting events
+        // Note: supportFeature check removed as it may not be available during initialization
+        // The 'craft' event will simply not fire if crafting is not available
+        this.bot.on('craft', (recipe, result) => {
+            this.eventEmitter.emitItemCraftEvent(recipe.name, result, recipe.ingredients);
+        });
 
         // Consumption events
         this.bot.on('consume', () => {
@@ -418,6 +418,9 @@ class MinecraftBot {
 
             // Information queries
             'entity.position': async () => {
+                if (!this.bot) throw new Error('Bot not initialized');
+                if (!this.bot.entity) throw new Error('Bot entity not available - bot may not be spawned');
+                if (!this.bot.entity.position) throw new Error('Bot position not available');
                 return this.bot.entity.position;
             },
 

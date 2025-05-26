@@ -55,6 +55,10 @@ class AgentConfig(BaseSettings):
         default="MinecraftAgent",
         description="Bot username in Minecraft"
     )
+    minecraft_version: str = Field(
+        default="1.21",
+        description="Minecraft version for bot compatibility"
+    )
 
     # Bridge configuration
     command_timeout_ms: int = Field(

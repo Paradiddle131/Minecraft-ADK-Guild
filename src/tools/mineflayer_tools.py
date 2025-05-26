@@ -1,9 +1,10 @@
 """
 Mineflayer Tools for Google ADK - Wraps Minecraft bot commands as ADK tools
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import structlog
+from google.adk.tools import ToolContext
 
 logger = structlog.get_logger(__name__)
 
@@ -16,7 +17,7 @@ def _set_bridge_manager(bridge):
     _bridge_manager = bridge
 
 
-async def move_to(x: int, y: int, z: int) -> Dict[str, Any]:
+async def move_to(x: int, y: int, z: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Move bot to specified coordinates using pathfinding.
 
     Args:
@@ -41,18 +42,40 @@ async def move_to(x: int, y: int, z: int) -> Dict[str, Any]:
         # Execute movement
         await _bridge_manager.move_to(x, y, z)
 
-        return {
+        result = {
             "status": "success",
             "position": {"x": x, "y": y, "z": z},
             "distance_traveled": distance,
         }
+        
+        # Update position in session state if tool_context is provided
+        if tool_context and hasattr(tool_context, 'state'):
+            tool_context.state['minecraft_position'] = {
+                'x': x,
+                'y': y,
+                'z': z,
+                'timestamp': __import__('time').time()
+            }
+            logger.info("Updated position in session state")
+        
+        return result
 
     except Exception as e:
         logger.error(f"Movement failed: {e}")
-        return {"status": "error", "error": str(e)}
+        error_result = {"status": "error", "error": str(e)}
+        
+        # Save movement error if tool_context is provided
+        if tool_context and hasattr(tool_context, 'state'):
+            tool_context.state['minecraft_last_movement_error'] = {
+                'error': str(e),
+                'target': {'x': x, 'y': y, 'z': z},
+                'timestamp': __import__('time').time()
+            }
+        
+        return error_result
 
 
-async def dig_block(x: int, y: int, z: int) -> Dict[str, Any]:
+async def dig_block(x: int, y: int, z: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Dig a block at specified coordinates.
 
     Args:
@@ -89,6 +112,7 @@ async def place_block(
     z: int,
     block_type: str,
     face: str,
+    tool_context: Optional[ToolContext] = None,
 ) -> Dict[str, Any]:
     """Place a block at specified coordinates.
 
@@ -136,6 +160,7 @@ async def find_blocks(
     block_name: str,
     max_distance: int,
     count: int,
+    tool_context: Optional[ToolContext] = None,
 ) -> Dict[str, Any]:
     """Find blocks of a specific type near the bot.
 
@@ -166,7 +191,7 @@ async def find_blocks(
         return {"status": "error", "error": str(e)}
 
 
-async def get_nearby_players() -> Dict[str, Any]:
+async def get_nearby_players(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Get information about nearby players.
 
     Returns:
@@ -184,7 +209,7 @@ async def get_nearby_players() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def get_inventory() -> Dict[str, Any]:
+async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Get current inventory contents.
 
     Returns:
@@ -201,19 +226,40 @@ async def get_inventory() -> Dict[str, Any]:
                 inventory_summary[name] = 0
             inventory_summary[name] += item["count"]
 
-        return {
+        result = {
             "status": "success",
             "items": items,
             "summary": inventory_summary,
             "total_items": sum(item["count"] for item in items),
         }
+        
+        # Save structured inventory data to session state if tool_context is provided
+        if tool_context and hasattr(tool_context, 'state'):
+            tool_context.state['minecraft_inventory'] = {
+                'items': items,
+                'summary': inventory_summary,
+                'total_items': result['total_items'],
+                'timestamp': __import__('time').time()
+            }
+            logger.info("Saved inventory data to session state")
+        
+        return result
 
     except Exception as e:
         logger.error(f"Inventory query failed: {e}")
-        return {"status": "error", "error": str(e)}
+        error_result = {"status": "error", "error": str(e)}
+        
+        # Save error state if tool_context is provided
+        if tool_context and hasattr(tool_context, 'state'):
+            tool_context.state['minecraft_inventory'] = {
+                'error': str(e),
+                'timestamp': __import__('time').time()
+            }
+        
+        return error_result
 
 
-async def craft_item(recipe: str, count: int) -> Dict[str, Any]:
+async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Craft an item using available materials.
 
     Args:
@@ -237,7 +283,7 @@ async def craft_item(recipe: str, count: int) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-async def send_chat(message: str) -> Dict[str, Any]:
+async def send_chat(message: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Send a chat message.
 
     Args:

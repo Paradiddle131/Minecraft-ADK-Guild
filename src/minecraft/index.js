@@ -15,17 +15,15 @@ async function startBot(options = {}) {
         port: parseInt(process.env.MC_SERVER_PORT) || 25565,
         username: process.env.MC_BOT_USERNAME || 'MinecraftAgent',
         auth: process.env.MC_BOT_AUTH || 'offline',
-        enableEventClient: true  // Can be disabled for standalone mode
+        enableEventClient: false
     };
 
     const botOptions = { ...defaultOptions, ...options };
 
-    console.log('Starting Minecraft bot with options:', botOptions);
 
     try {
         // Create bot
         const bot = await createBot(botOptions);
-        console.log('Bot created successfully');
 
         let eventClient = null;
 
@@ -36,7 +34,7 @@ async function startBot(options = {}) {
                     parseInt(process.env.BRIDGE_PORT) || 8765
                 );
 
-                // Connect event client with longer timeout and retry
+                // Connect event client with retry
                 let connected = false;
                 let attempts = 0;
                 const maxAttempts = 3;
@@ -53,7 +51,6 @@ async function startBot(options = {}) {
                     } catch (error) {
                         attempts++;
                         if (attempts < maxAttempts) {
-                            console.log(`Event client connection attempt ${attempts} failed, retrying in 2s...`);
                             await new Promise(resolve => setTimeout(resolve, 2000));
                         } else {
                             throw error;
@@ -61,12 +58,10 @@ async function startBot(options = {}) {
                     }
                 }
                 
-                console.log('Event client connected');
 
                 // Integrate bot with event client
                 integrateEventClient(bot, eventClient);
             } catch (error) {
-                console.warn('Failed to connect to event client, running without event streaming:', error.message);
                 eventClient = null;
             }
         }
