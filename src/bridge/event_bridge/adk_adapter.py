@@ -6,12 +6,13 @@ import time
 from typing import Any, Dict, List, Optional, Callable
 
 import structlog
-from google.cloud import adk
+from google.adk.events import EventActions
 
 from .event_registry import event_registry, EventRegistry
 from .event_logger import event_logger
 from .payload_schemas import payload_validator, ValidationResult
 from .state_sync import state_synchronizer
+from .circuit_breaker import circuit_breaker, CircuitBreakerConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -30,6 +31,13 @@ class ADKEventAdapter:
         self.failed_events = 0
         self.start_time = time.time()
         
+        # Circuit breaker for event processing
+        self.circuit_breaker_config = CircuitBreakerConfig(
+            failure_threshold=10,
+            recovery_timeout=30.0,
+            timeout=10.0
+        )
+        
         logger.info("ADKEventAdapter initialized")
     
     async def start(self):
@@ -44,7 +52,8 @@ class ADKEventAdapter:
         await event_logger.stop()
         logger.info("ADKEventAdapter stopped")
     
-    async def process_minecraft_event(self, event_data: Dict[str, Any]) -> Optional[adk.EventActions]:
+    @circuit_breaker("adk_event_processing")
+    async def process_minecraft_event(self, event_data: Dict[str, Any]) -> Optional[EventActions]:
         """
         Process a Minecraft event and convert to ADK EventActions
         
@@ -118,7 +127,7 @@ class ADKEventAdapter:
             event_logger.log_event_processed(event_id, state_changes)
             
             # Create EventActions
-            event_actions = adk.EventActions()
+            event_actions = EventActions()
             
             if state_changes:
                 event_actions.state_delta = state_changes
@@ -170,7 +179,7 @@ class ADKEventAdapter:
             return None
     
     async def _call_event_handlers(self, event_type: str, event_data: Dict[str, Any], 
-                                 event_actions: adk.EventActions):
+                                 event_actions: EventActions):
         """Call registered event handlers"""
         handlers = self.event_handlers.get(event_type, [])
         
@@ -182,7 +191,7 @@ class ADKEventAdapter:
                     result = handler(event_data)
                 
                 # Merge handler results into event_actions
-                if isinstance(result, adk.EventActions):
+                if isinstance(result, EventActions):
                     if result.state_delta:
                         event_actions.state_delta.update(result.state_delta)
                     # Could merge other EventActions fields here
@@ -233,9 +242,9 @@ class ADKEventAdapter:
             }
         }
     
-    async def handle_spawn_event(self, event_data: Dict[str, Any]) -> adk.EventActions:
+    async def handle_spawn_event(self, event_data: Dict[str, Any]) -> EventActions:
         """Special handler for spawn events - critical for bot initialization"""
-        event_actions = adk.EventActions()
+        event_actions = EventActions()
         
         spawn_data = event_data.get('data', {})
         
@@ -269,9 +278,9 @@ class ADKEventAdapter:
         
         return event_actions
     
-    async def handle_chat_event(self, event_data: Dict[str, Any]) -> adk.EventActions:
+    async def handle_chat_event(self, event_data: Dict[str, Any]) -> EventActions:
         """Special handler for chat events"""
-        event_actions = adk.EventActions()
+        event_actions = EventActions()
         
         chat_data = event_data.get('data', {})
         username = chat_data.get('username', 'unknown')

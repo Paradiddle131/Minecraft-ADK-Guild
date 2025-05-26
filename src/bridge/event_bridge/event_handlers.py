@@ -3,10 +3,10 @@ Event Handler Decorators - Simplified event handler registration
 """
 import asyncio
 import functools
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import structlog
-from google.cloud import adk
+from google.adk.events import EventActions
 
 from .adk_adapter import adk_adapter
 from .event_registry import event_registry
@@ -34,7 +34,7 @@ def minecraft_event(event_type: str,
     """
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        async def wrapper(event_data: Dict[str, Any]) -> Optional[adk.EventActions]:
+        async def wrapper(event_data: Dict[str, Any]) -> Optional[EventActions]:
             start_time = asyncio.get_event_loop().time()
             event_id = event_data.get('eventId', 'unknown')
             
@@ -60,13 +60,13 @@ def minecraft_event(event_type: str,
                 
                 # Ensure result is EventActions
                 if result is None:
-                    result = adk.EventActions()
-                elif not isinstance(result, adk.EventActions):
+                    result = EventActions()
+                elif not isinstance(result, EventActions):
                     logger.warning("Handler returned non-EventActions result",
                                  event_type=event_type,
                                  handler=func.__name__,
                                  result_type=type(result).__name__)
-                    result = adk.EventActions()
+                    result = EventActions()
                 
                 processing_time = asyncio.get_event_loop().time() - start_time
                 logger.debug("Event handler completed",
@@ -138,15 +138,15 @@ def batch_event_handler(event_types: list, batch_window_ms: int = 100):
     """
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        async def wrapper(event_batch: list) -> Optional[adk.EventActions]:
+        async def wrapper(event_batch: list) -> Optional[EventActions]:
             try:
                 if asyncio.iscoroutinefunction(func):
                     result = await func(event_batch)
                 else:
                     result = func(event_batch)
                 
-                if not isinstance(result, adk.EventActions):
-                    result = adk.EventActions()
+                if not isinstance(result, EventActions):
+                    result = EventActions()
                 
                 return result
                 
@@ -182,7 +182,7 @@ def conditional_event_handler(event_type: str, condition: Callable[[Dict[str, An
     """
     def decorator(func: Callable) -> Callable:
         @minecraft_event(event_type, auto_register=False)
-        async def wrapper(event_data: Dict[str, Any]) -> Optional[adk.EventActions]:
+        async def wrapper(event_data: Dict[str, Any]) -> Optional[EventActions]:
             # Check condition first
             try:
                 should_handle = condition(event_data)
@@ -307,7 +307,7 @@ handler_registry = EventHandlerRegistry()
 
 # Example handlers for common events
 @minecraft_event("minecraft:spawn", priority=100)
-async def handle_bot_spawn(event_data: Dict[str, Any]) -> adk.EventActions:
+async def handle_bot_spawn(event_data: Dict[str, Any]) -> EventActions:
     """Default spawn handler - sets basic bot state"""
     spawn_data = event_data.get('data', {})
     
@@ -330,11 +330,11 @@ async def handle_bot_spawn(event_data: Dict[str, Any]) -> adk.EventActions:
                event_id=event_data.get('eventId'),
                position=spawn_data.get('position'))
     
-    return adk.EventActions(state_delta=state_delta)
+    return EventActions(state_delta=state_delta)
 
 
 @minecraft_event("minecraft:health", priority=75)
-async def handle_health_change(event_data: Dict[str, Any]) -> adk.EventActions:
+async def handle_health_change(event_data: Dict[str, Any]) -> EventActions:
     """Default health handler - tracks bot health"""
     health_data = event_data.get('data', {})
     
@@ -353,11 +353,11 @@ async def handle_health_change(event_data: Dict[str, Any]) -> adk.EventActions:
         "minecraft.bot.health_full": health >= 20
     })
     
-    return adk.EventActions(state_delta=state_delta)
+    return EventActions(state_delta=state_delta)
 
 
 @background_event_handler("minecraft:position")
-async def handle_position_update(event_data: Dict[str, Any]) -> adk.EventActions:
+async def handle_position_update(event_data: Dict[str, Any]) -> EventActions:
     """Background position handler - low priority position tracking"""
     pos_data = event_data.get('data', {})
     
@@ -374,7 +374,7 @@ async def handle_position_update(event_data: Dict[str, Any]) -> adk.EventActions
     if 'pitch' in pos_data:
         state_delta["minecraft.bot.position.pitch"] = pos_data['pitch']
     
-    return adk.EventActions(state_delta=state_delta)
+    return EventActions(state_delta=state_delta)
 
 
 # Conditional handler example
@@ -392,7 +392,7 @@ def is_important_chat(event_data: Dict[str, Any]) -> bool:
 
 
 @conditional_event_handler("minecraft:chat", is_important_chat)
-async def handle_important_chat(event_data: Dict[str, Any]) -> adk.EventActions:
+async def handle_important_chat(event_data: Dict[str, Any]) -> EventActions:
     """Handle only important chat messages"""
     chat_data = event_data.get('data', {})
     
@@ -407,4 +407,4 @@ async def handle_important_chat(event_data: Dict[str, Any]) -> adk.EventActions:
                username=chat_data.get('username'),
                message=chat_data.get('message'))
     
-    return adk.EventActions(state_delta=state_delta)
+    return EventActions(state_delta=state_delta)

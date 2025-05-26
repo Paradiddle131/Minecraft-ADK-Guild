@@ -11,7 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import structlog
-from google.cloud import adk
+# ADK imports are not used in this file - removed unused import
 
 logger = structlog.get_logger(__name__)
 
