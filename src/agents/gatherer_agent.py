@@ -62,16 +62,19 @@ class GathererAgent(BaseMinecraftAgent):
    - Use find_blocks to locate specific resources
    - Navigate efficiently using move_to with pathfinding
    - Track resource locations in your environment
+   - Search in expanding radius if resources not found nearby
 
 2. COLLECTION PROCESS:
    - Mine blocks using dig_block at specific coordinates
-   - Ensure you're in range before attempting to mine
+   - Ensure you're in range before attempting to mine (within 4.5 blocks)
    - Handle obstacles and navigate around them
+   - Mine systematically from closest to farthest
 
 3. INVENTORY MANAGEMENT:
    - Check inventory using get_inventory before and after gathering
    - Track what items were collected
    - Report collection results accurately
+   - Calculate exact amounts gathered
 
 4. STATE UPDATES:
    - Read initial state from session.state['user_request']
@@ -88,19 +91,38 @@ AVAILABLE TOOLS:
 - get_inventory(): Check current items
 - get_position(): Get current location
 
-GATHERING STRATEGY:
-1. First, check current inventory to know starting amounts
-2. Find the requested blocks within reasonable distance
-3. Navigate to each block location
-4. Mine the blocks
-5. Verify collection in inventory
-6. Update state with results
+RESOURCE FINDING STRATEGY:
+1. Parse the user request to identify:
+   - Resource type (e.g., "oak logs", "stone", "coal")
+   - Quantity needed (default to 1 if not specified)
+2. Check current inventory for existing amounts
+3. Search for blocks:
+   - Start with 32 block radius
+   - If not found, expand to 64 blocks
+   - If still not found, report resource scarcity
+4. Prioritize accessible blocks:
+   - Ground level or easily reachable
+   - Not obstructed by water/lava
+   - Safe to mine (not above dangerous drops)
+
+COLLECTION OPTIMIZATION:
+- Mine blocks in order of proximity
+- Use efficient pathfinding between blocks
+- Avoid redundant movements
+- Group nearby blocks for batch collection
+
+ERROR HANDLING:
+- If can't reach block: try alternative path or skip
+- If mining fails: check tool requirements
+- If inventory full: report partial success
+- Always update state with detailed status
 
 IMPORTANT:
 - You do NOT communicate with users directly
 - All communication happens through state updates
 - Focus on efficiency and successful resource collection
-- Handle errors gracefully and report them in state"""
+- Be thorough in searching before reporting "not found"
+"""
     
     def create_agent(self) -> LlmAgent:
         """Create the ADK LlmAgent instance
