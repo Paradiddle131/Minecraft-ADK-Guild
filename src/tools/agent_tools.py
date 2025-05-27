@@ -109,10 +109,36 @@ def create_gatherer_tools(bridge_manager) -> List[Any]:
         get_inventory_enhanced.__name__ = "get_inventory"
         enhanced_tools.append(get_inventory_enhanced)
     
-    # Add other tools without enhancement
-    for tool_name in ["move_to", "get_position", "place_block", "send_chat"]:
+    if "get_position" in tool_map:
+        original_get_position = tool_map["get_position"]
+        
+        async def get_position_enhanced(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+            """Enhanced get_position that updates minecraft position state"""
+            result = await original_get_position()
+            
+            # Update state with current position
+            if tool_context and result.get("status") == "success":
+                position = result.get("position", {})
+                tool_context.state[StateKeys.MINECRAFT_POSITION] = position
+                logger.info(f"Updated position state: {position}")
+                
+            return result
+            
+        get_position_enhanced.__name__ = "get_position"
+        enhanced_tools.append(get_position_enhanced)
+    
+    required_tools = ["move_to", "place_block", "send_chat"]
+    missing_tools = []
+    
+    for tool_name in required_tools:
         if tool_name in tool_map:
             enhanced_tools.append(tool_map[tool_name])
+        else:
+            missing_tools.append(tool_name)
+            logger.warning(f"Tool '{tool_name}' not found in base tools for GathererAgent")
+    
+    if missing_tools:
+        logger.error(f"GathererAgent missing required tools: {missing_tools}")
             
     return enhanced_tools
 
@@ -208,8 +234,17 @@ def create_crafter_tools(bridge_manager) -> List[Any]:
         enhanced_tools.append(get_inventory_enhanced)
     
     # Add other tools without enhancement
-    for tool_name in ["find_blocks", "place_block", "move_to", "get_position", "send_chat"]:
+    required_tools = ["find_blocks", "place_block", "move_to", "get_position", "send_chat"]
+    missing_tools = []
+    
+    for tool_name in required_tools:
         if tool_name in tool_map:
             enhanced_tools.append(tool_map[tool_name])
+        else:
+            missing_tools.append(tool_name)
+            logger.warning(f"Tool '{tool_name}' not found in base tools for CrafterAgent")
+    
+    if missing_tools:
+        logger.error(f"CrafterAgent missing required tools: {missing_tools}")
             
     return enhanced_tools

@@ -156,6 +156,37 @@ async def place_block(
         return {"status": "error", "error": str(e)}
 
 
+async def get_position() -> Dict[str, Any]:
+    """Get the bot's current position in the world.
+    
+    Returns:
+        Dictionary with bot's coordinates
+    """
+    try:
+        position = await _bridge_manager.get_position()
+        
+        if position:
+            return {
+                'status': 'success',
+                'position': position,
+                'x': position.get('x'),
+                'y': position.get('y'),
+                'z': position.get('z')
+            }
+        else:
+            return {
+                'status': 'error',
+                'error': 'Unable to get position'
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting position: {e}")
+        return {
+            'status': 'error',
+            'error': str(e)
+        }
+
+
 async def find_blocks(
     block_name: str,
     max_distance: int,
@@ -319,6 +350,7 @@ def create_mineflayer_tools(bridge_manager) -> List:
         move_to,
         dig_block,
         place_block,
+        get_position,
         find_blocks,
         get_nearby_players,
         get_inventory,
