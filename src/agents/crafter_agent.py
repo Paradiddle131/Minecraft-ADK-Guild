@@ -278,3 +278,130 @@ IMPORTANT:
             "has_crafting_table": has_table,
             "recipe": recipe
         }
+    
+    def _plan_crafting_steps(self, item: str, inventory: dict) -> list:
+        """Plan multi-step crafting sequence
+        
+        Args:
+            item: Final item to craft
+            inventory: Current inventory
+            
+        Returns:
+            List of crafting steps in order
+        """
+        steps = []
+        items_to_craft = [item]
+        crafted_items = set()
+        
+        # Work backwards from target item
+        while items_to_craft:
+            current_item = items_to_craft.pop(0)
+            
+            # Skip if already planned
+            if current_item in crafted_items:
+                continue
+                
+            analysis = self.analyze_crafting_prerequisites(current_item, inventory)
+            
+            if analysis.get("error"):
+                steps.append({
+                    "type": "error",
+                    "item": current_item,
+                    "error": analysis["error"]
+                })
+                continue
+                
+            # Check if we can craft directly
+            if analysis["can_craft"]:
+                steps.append({
+                    "type": "craft",
+                    "item": current_item,
+                    "recipe": analysis["recipe"],
+                    "requires_crafting_table": analysis["requires_crafting_table"]
+                })
+                crafted_items.add(current_item)
+                
+                # Update virtual inventory
+                for material, count in analysis["recipe"].items():
+                    inventory[material] = inventory.get(material, 0) - count
+                inventory[current_item] = inventory.get(current_item, 0) + 1
+            else:
+                # Need to craft prerequisites first
+                if analysis["missing_materials"]:
+                    for material, needed in analysis["missing_materials"].items():
+                        # Check if material is craftable
+                        if self._is_craftable(material):
+                            items_to_craft.insert(0, material)
+                        else:
+                            steps.append({
+                                "type": "gather_required",
+                                "item": material,
+                                "amount": needed,
+                                "for": current_item
+                            })
+                            
+                # Need crafting table
+                if analysis["requires_crafting_table"] and not analysis["has_crafting_table"]:
+                    if "crafting_table" not in crafted_items:
+                        items_to_craft.insert(0, "crafting_table")
+                        
+                # Re-queue this item for later
+                items_to_craft.append(current_item)
+                
+        return self._optimize_crafting_order(steps)
+        
+    def _is_craftable(self, item: str) -> bool:
+        """Check if an item can be crafted (vs gathered)
+        
+        Args:
+            item: Item name
+            
+        Returns:
+            True if craftable
+        """
+        craftable_items = [
+            "planks", "wooden_planks", "sticks", "stick",
+            "crafting_table", "torch", "ladder", "chest",
+            "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe",
+            "wooden_axe", "stone_axe", "wooden_shovel",
+            "stone_shovel", "wooden_sword", "stone_sword",
+            "furnace", "stone_bricks"
+        ]
+        
+        return item.lower() in craftable_items
+        
+    def _optimize_crafting_order(self, steps: list) -> list:
+        """Optimize crafting step order
+        
+        Args:
+            steps: List of crafting steps
+            
+        Returns:
+            Optimized step list
+        """
+        # Separate steps by type
+        gather_steps = [s for s in steps if s["type"] == "gather_required"]
+        craft_steps = [s for s in steps if s["type"] == "craft"]
+        error_steps = [s for s in steps if s["type"] == "error"]
+        
+        # Order: gather first, then craft (simple items before complex)
+        optimized = []
+        
+        # Add all gathering steps first
+        optimized.extend(gather_steps)
+        
+        # Sort crafting steps by complexity (simple items first)
+        craft_priority = {
+            "planks": 1, "wooden_planks": 1,
+            "sticks": 2, "stick": 2,
+            "crafting_table": 3,
+            "torch": 4
+        }
+        
+        craft_steps.sort(key=lambda x: craft_priority.get(x["item"], 99))
+        optimized.extend(craft_steps)
+        
+        # Add errors last
+        optimized.extend(error_steps)
+        
+        return optimized
