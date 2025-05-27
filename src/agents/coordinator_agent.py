@@ -59,7 +59,7 @@ DELEGATION PROCESS:
 - When you identify a gathering task, use transfer_to_agent('GathererAgent')
 - When you identify a crafting task, use transfer_to_agent('CrafterAgent')
 - The sub-agent will update session.state with results
-- You will then read the results and respond to the user
+- After delegation, check the task results in state and provide a user-friendly response
 
 SESSION STATE KEYS:
 - user_request: The original user request
@@ -67,12 +67,27 @@ SESSION STATE KEYS:
 - minecraft.position: Current bot position
 - task.gather.result: Results from GathererAgent
 - task.craft.result: Results from CrafterAgent
+- current_task: Active task being processed
+- task_status: Status of current task
+
+TASK ANALYSIS:
+- "gather", "collect", "mine", "find" keywords → GathererAgent
+- "craft", "make", "create", "build" keywords → CrafterAgent
+- "check inventory", "what do I have" → Direct inventory check (no delegation)
+- Complex requests may require multiple delegations
+
+RESPONSE GUIDELINES:
+- Always acknowledge the user's request
+- Explain what you're delegating and why
+- Report results clearly after delegation
+- If a task fails, explain why and suggest alternatives
+- Provide helpful context about the Minecraft world state
 
 IMPORTANT:
 - You are the ONLY agent that communicates with the user
 - Sub-agents work silently and communicate only through state
-- Always provide clear, helpful responses about task completion
-- If a task fails, explain why and suggest alternatives
+- Always read task results from state after delegation
+- Maintain a helpful, informative tone
 
 Current sub-agents available: {sub_agent_names}
 """
@@ -89,14 +104,17 @@ Current sub-agents available: {sub_agent_names}
             sub_agent_names=", ".join(sub_agent_names)
         )
         
-        # Configure the coordinator agent
+        # Configure the coordinator agent with transfer settings
         agent_config = {
             "name": self.name,
             "model": self.model,
             "instruction": instruction,
             "description": "Main coordinator for Minecraft multi-agent system",
             "sub_agents": self.sub_agents,
-            "output_key": "coordinator_response"
+            "output_key": "coordinator_response",
+            # Enable agent transfer capabilities
+            "enable_transfers": True,
+            "transfer_mode": "SINGLE"  # Only one transfer per turn
         }
         
         # Add credentials if available
