@@ -3,14 +3,14 @@ Agent-enhanced Mineflayer tools with state management
 Wraps existing tools with agent-specific state updates
 """
 
-import structlog
 from typing import List, Any, Dict, Optional
 from google.adk.tools.tool_context import ToolContext
 
 from .mineflayer_tools import create_mineflayer_tools
 from ..agents.state_schema import StateKeys, ResultStatus, create_gather_result, create_craft_result
+from ..logging_config import get_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def create_gatherer_tools(bridge_manager) -> List[Any]:

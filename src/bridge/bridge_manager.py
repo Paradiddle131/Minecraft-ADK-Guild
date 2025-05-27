@@ -13,7 +13,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 if TYPE_CHECKING:
     from ..config import AgentConfig
 
-logger = structlog.get_logger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

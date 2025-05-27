@@ -3,14 +3,14 @@ Base Minecraft Agent class with bridge integration
 Provides common functionality for all Minecraft agents
 """
 
-import structlog
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
 from ..bridge.bridge_manager import BridgeManager
 from ..config import AgentConfig, get_config, setup_google_ai_credentials
+from ..logging_config import get_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseMinecraftAgent(ABC):

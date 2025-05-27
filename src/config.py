@@ -70,6 +70,20 @@ class AgentConfig(BaseSettings):
         description="Maximum size of event queue"
     )
 
+    # Logging configuration
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR)"
+    )
+    log_file: Optional[str] = Field(
+        default=None,
+        description="Log file path (None for no file logging)"
+    )
+    log_json_format: bool = Field(
+        default=False,
+        description="Use JSON format for logs"
+    )
+
     class Config:
         env_file = ".env"
         env_prefix = "MINECRAFT_AGENT_"

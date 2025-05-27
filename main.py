@@ -8,7 +8,6 @@ import argparse
 import sys
 from typing import Optional
 
-import structlog
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -17,8 +16,10 @@ from src.config import get_config, setup_google_ai_credentials
 from src.bridge.bridge_manager import BridgeManager
 from src.tools.agent_tools import create_gatherer_tools, create_crafter_tools
 from src.agents import CoordinatorAgent, GathererAgent, CrafterAgent
+from src.logging_config import setup_logging, get_logger
 
-logger = structlog.get_logger(__name__)
+# Module-level logger (will be properly configured in main())
+logger = get_logger(__name__)
 
 
 async def setup_agents(bridge_manager: BridgeManager, config=None):
@@ -171,6 +172,15 @@ async def main():
     
     # Load configuration
     config = get_config()
+    
+    # Setup logging with config
+    setup_logging(
+        log_level=config.log_level,
+        log_file=config.log_file,
+        console_output=True,
+        json_format=config.log_json_format
+    )
+    
     logger.info("Starting Minecraft Multi-Agent System")
     
     # Initialize bridge manager

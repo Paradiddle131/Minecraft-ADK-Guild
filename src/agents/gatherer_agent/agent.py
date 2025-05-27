@@ -3,16 +3,16 @@ GathererAgent - Specialized agent for resource collection tasks in Minecraft
 Handles finding and mining blocks, collecting items, and managing resources
 """
 
-import structlog
 from typing import List, Optional, Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.sessions import InMemorySessionService
 
 from ..base_minecraft_agent import BaseMinecraftAgent
 from ...bridge.bridge_manager import BridgeManager
+from ...logging_config import get_logger
 from .prompt import GATHERER_INSTRUCTIONS
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class GathererAgent(BaseMinecraftAgent):

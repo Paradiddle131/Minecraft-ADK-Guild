@@ -3,10 +3,11 @@ Mineflayer Tools for Google ADK - Wraps Minecraft bot commands as ADK tools
 """
 from typing import Any, Dict, List, Optional
 
-import structlog
 from google.adk.tools import ToolContext
 
-logger = structlog.get_logger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Global bridge reference for tool functions
 _bridge_manager = None
