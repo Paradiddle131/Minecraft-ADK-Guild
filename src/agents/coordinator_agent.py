@@ -8,10 +8,13 @@ from typing import List, Optional, Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.sessions import SessionService
 
+from .base_minecraft_agent import BaseMinecraftAgent
+from ..bridge.bridge_manager import BridgeManager
+
 logger = structlog.get_logger(__name__)
 
 
-class CoordinatorAgent:
+class CoordinatorAgent(BaseMinecraftAgent):
     """Main coordinator agent that handles user interaction and delegates to sub-agents"""
     
     def __init__(
@@ -20,7 +23,9 @@ class CoordinatorAgent:
         model: str = "gemini-2.0-flash",
         sub_agents: Optional[List[Any]] = None,
         session_service: Optional[SessionService] = None,
-        ai_credentials: Optional[Dict[str, Any]] = None
+        bridge_manager: Optional[BridgeManager] = None,
+        ai_credentials: Optional[Dict[str, Any]] = None,
+        config=None
     ):
         """Initialize the coordinator agent
         
@@ -29,13 +34,18 @@ class CoordinatorAgent:
             model: LLM model to use
             sub_agents: List of sub-agents (GathererAgent, CrafterAgent)
             session_service: ADK session service for state management
+            bridge_manager: Shared BridgeManager instance
             ai_credentials: Google AI credentials
+            config: Agent configuration
         """
-        self.name = name
+        # Initialize base class
+        super().__init__(name, bridge_manager, config)
+        
         self.model = model
         self.sub_agents = sub_agents or []
         self.session_service = session_service
-        self.ai_credentials = ai_credentials
+        if ai_credentials:
+            self.ai_credentials = ai_credentials
         self.agent = None
         
         logger.info(f"Initializing {self.name} with {len(self.sub_agents)} sub-agents")

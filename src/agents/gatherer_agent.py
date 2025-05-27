@@ -8,10 +8,13 @@ from typing import List, Optional, Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.sessions import SessionService
 
+from .base_minecraft_agent import BaseMinecraftAgent
+from ..bridge.bridge_manager import BridgeManager
+
 logger = structlog.get_logger(__name__)
 
 
-class GathererAgent:
+class GathererAgent(BaseMinecraftAgent):
     """Agent specialized in resource gathering and collection tasks"""
     
     def __init__(
@@ -20,7 +23,9 @@ class GathererAgent:
         model: str = "gemini-2.0-flash",
         tools: Optional[List[Any]] = None,
         session_service: Optional[SessionService] = None,
-        ai_credentials: Optional[Dict[str, Any]] = None
+        bridge_manager: Optional[BridgeManager] = None,
+        ai_credentials: Optional[Dict[str, Any]] = None,
+        config=None
     ):
         """Initialize the gatherer agent
         
@@ -29,13 +34,18 @@ class GathererAgent:
             model: LLM model to use
             tools: List of Mineflayer tools for gathering operations
             session_service: ADK session service for state management
+            bridge_manager: Shared BridgeManager instance
             ai_credentials: Google AI credentials
+            config: Agent configuration
         """
-        self.name = name
+        # Initialize base class
+        super().__init__(name, bridge_manager, config)
+        
         self.model = model
         self.tools = tools or []
         self.session_service = session_service
-        self.ai_credentials = ai_credentials
+        if ai_credentials:
+            self.ai_credentials = ai_credentials
         self.agent = None
         
         logger.info(f"Initializing {self.name} with {len(self.tools)} tools")

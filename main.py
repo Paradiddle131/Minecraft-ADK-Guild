@@ -15,7 +15,7 @@ from google.genai import types
 
 from src.config import get_config, setup_google_ai_credentials
 from src.bridge.bridge_manager import BridgeManager
-from src.tools.mineflayer_tools import create_mineflayer_tools
+from src.tools.agent_tools import create_gatherer_tools, create_crafter_tools
 from src.agents import CoordinatorAgent, GathererAgent, CrafterAgent
 
 logger = structlog.get_logger(__name__)
@@ -44,24 +44,29 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     # Create session service
     session_service = InMemorySessionService()
     
-    # Create tools for sub-agents
-    tools = create_mineflayer_tools(bridge_manager)
+    # Create enhanced tools for sub-agents
+    gatherer_tools = create_gatherer_tools(bridge_manager)
+    crafter_tools = create_crafter_tools(bridge_manager)
     
-    # Create sub-agents
+    # Create sub-agents with bridge integration
     gatherer = GathererAgent(
         name="GathererAgent",
         model=config.default_model,
-        tools=tools,
+        tools=gatherer_tools,
         session_service=session_service,
-        ai_credentials=ai_credentials
+        bridge_manager=bridge_manager,
+        ai_credentials=ai_credentials,
+        config=config
     )
     
     crafter = CrafterAgent(
         name="CrafterAgent", 
         model=config.default_model,
-        tools=tools,
+        tools=crafter_tools,
         session_service=session_service,
-        ai_credentials=ai_credentials
+        bridge_manager=bridge_manager,
+        ai_credentials=ai_credentials,
+        config=config
     )
     
     # Create coordinator with sub-agents
@@ -70,7 +75,9 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         model=config.default_model,
         sub_agents=[gatherer.create_agent(), crafter.create_agent()],
         session_service=session_service,
-        ai_credentials=ai_credentials
+        bridge_manager=bridge_manager,
+        ai_credentials=ai_credentials,
+        config=config
     )
     
     # Create runner for the coordinator
