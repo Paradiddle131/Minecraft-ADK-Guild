@@ -178,7 +178,8 @@ async def main():
         log_level=config.log_level,
         log_file=config.log_file,
         console_output=True,
-        json_format=config.log_json_format
+        json_format=config.log_json_format,
+        google_log_level=config.google_log_level
     )
     
     logger.info("Starting Minecraft Multi-Agent System")

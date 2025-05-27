@@ -83,6 +83,10 @@ class AgentConfig(BaseSettings):
         default=False,
         description="Use JSON format for logs"
     )
+    google_log_level: str = Field(
+        default="WARNING",
+        description="Logging level for Google ADK and other Google libraries"
+    )
 
     class Config:
         env_file = ".env"

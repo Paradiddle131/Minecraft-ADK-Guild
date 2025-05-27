@@ -28,6 +28,7 @@ def setup_logging(
     log_dir: str = "logs",
     console_output: bool = True,
     json_format: bool = False,
+    google_log_level: str = "WARNING",
 ) -> None:
     """
     Configure structlog for both console and file output
@@ -38,6 +39,7 @@ def setup_logging(
         log_dir: Directory for log files (default: "logs")
         console_output: Whether to output to console (default: True)
         json_format: Whether to use JSON format for logs (default: False for console readability)
+        google_log_level: Logging level for Google ADK and other Google libraries (default: WARNING)
     """
     # Create logs directory if it doesn't exist
     log_path = Path(log_dir)
@@ -136,14 +138,33 @@ def setup_logging(
     )
     file_handler.setFormatter(file_processor)
     
-    # Log initialization
-    logger = structlog.get_logger(__name__)
-    logger.info(
+    # Configure Google ADK and related library loggers
+    google_log_level = getattr(logging, google_log_level.upper())
+    
+    # Configure Google ADK related loggers
+    logging.getLogger("google_adk").setLevel(google_log_level)
+    logging.getLogger("google.adk").setLevel(google_log_level)
+    logging.getLogger("google_genai").setLevel(google_log_level)
+    logging.getLogger("google.genai").setLevel(google_log_level)
+    logging.getLogger("google.cloud").setLevel(google_log_level)
+    logging.getLogger("google.cloud.aiplatform").setLevel(google_log_level)
+    logging.getLogger("google.api_core").setLevel(google_log_level)
+    logging.getLogger("google.auth").setLevel(google_log_level)
+    
+    # Also suppress verbose libraries that ADK might use
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("grpc").setLevel(logging.WARNING)
+    logging.getLogger("opentelemetry").setLevel(logging.WARNING)
+    
+    logger: BoundLogger = structlog.get_logger(__name__)
+    logger.debug(
         "Logging initialized",
         log_level=log_level,
         log_file=str(full_log_path),
         console_output=console_output,
         json_format=json_format,
+        google_log_level=logging.getLevelName(google_log_level),
     )
 
 
