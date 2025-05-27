@@ -286,3 +286,127 @@ Current sub-agents available: {sub_agent_names}
         }
         
         return agent_mapping.get(task_type)
+    
+    def _synthesize_response(self, session_state: dict, task_analysis: dict) -> str:
+        """Synthesize user-friendly response from sub-agent results
+        
+        Args:
+            session_state: Current session state with results
+            task_analysis: Original task analysis
+            
+        Returns:
+            User-friendly response string
+        """
+        from .state_schema import StateKeys
+        
+        task_type = task_analysis.get("task_type")
+        target = task_analysis.get("target", "items")
+        
+        # Check for gathering results
+        if task_type == "gather":
+            gather_result = session_state.get(StateKeys.GATHER_RESULT, {})
+            
+            if gather_result.get("status") == "success":
+                gathered = gather_result.get("gathered", 0)
+                item_type = gather_result.get("item_type", target)
+                
+                # Get current position for context
+                position = session_state.get(StateKeys.MINECRAFT_POSITION, {})
+                pos_str = f" at position ({position.get('x', 0):.0f}, {position.get('y', 0):.0f}, {position.get('z', 0):.0f})" if position else ""
+                
+                return (f"✅ Successfully gathered {gathered} {item_type}{pos_str}! "
+                       f"The items have been added to your inventory.")
+                       
+            elif gather_result.get("status") == "error":
+                error = gather_result.get("error", "Unknown error")
+                return (f"❌ Failed to gather {target}: {error}. "
+                       f"Try moving to a different area or checking if the resource exists nearby.")
+                       
+            elif gather_result.get("status") == "not_found":
+                return (f"🔍 Could not find any {target} within search range. "
+                       f"You may need to explore further or try a different biome.")
+                       
+        # Check for crafting results
+        elif task_type == "craft":
+            craft_result = session_state.get(StateKeys.CRAFT_RESULT, {})
+            
+            if craft_result.get("status") == "success":
+                crafted = craft_result.get("crafted", 0)
+                item_type = craft_result.get("item_type", target)
+                
+                return (f"🔨 Successfully crafted {crafted} {item_type}! "
+                       f"The crafted items are now in your inventory.")
+                       
+            elif craft_result.get("status") == "insufficient_resources":
+                missing = craft_result.get("missing_materials", {})
+                missing_str = ", ".join([f"{count} {item}" for item, count in missing.items()])
+                
+                return (f"📦 Cannot craft {target} - missing materials: {missing_str}. "
+                       f"You'll need to gather these resources first.")
+                       
+            elif craft_result.get("status") == "error":
+                error = craft_result.get("error", "Unknown error")
+                return f"❌ Failed to craft {target}: {error}"
+                
+        # Check for inventory query
+        elif task_type == "inventory":
+            inventory = session_state.get(StateKeys.MINECRAFT_INVENTORY, {})
+            
+            if not inventory:
+                return "🎒 Your inventory is empty."
+            else:
+                # Format inventory nicely
+                items = []
+                for item, count in sorted(inventory.items()):
+                    items.append(f"• {item}: {count}")
+                    
+                inventory_list = "\n".join(items[:10])  # Show first 10 items
+                total_types = len(inventory)
+                
+                response = f"🎒 Current inventory ({total_types} item types):\n{inventory_list}"
+                
+                if total_types > 10:
+                    response += f"\n... and {total_types - 10} more item types"
+                    
+                return response
+                
+        # Default response if no results found
+        return self._create_status_response(session_state, task_analysis)
+        
+    def _create_status_response(self, session_state: dict, task_analysis: dict) -> str:
+        """Create a status response when no specific results are available
+        
+        Args:
+            session_state: Current session state
+            task_analysis: Task analysis
+            
+        Returns:
+            Status response string
+        """
+        from .state_schema import StateKeys
+        
+        # Get current world state
+        position = session_state.get(StateKeys.MINECRAFT_POSITION, {})
+        health = session_state.get(StateKeys.MINECRAFT_HEALTH, 20)
+        food = session_state.get(StateKeys.MINECRAFT_FOOD, 20)
+        
+        status_parts = []
+        
+        if position:
+            status_parts.append(f"Position: ({position.get('x', 0):.0f}, {position.get('y', 0):.0f}, {position.get('z', 0):.0f})")
+            
+        if health < 20:
+            status_parts.append(f"Health: {health}/20")
+            
+        if food < 20:
+            status_parts.append(f"Food: {food}/20")
+            
+        status_str = " | ".join(status_parts) if status_parts else "Status unknown"
+        
+        task_type = task_analysis.get("task_type", "unknown")
+        if task_type == "gather":
+            return f"🔄 Gathering task in progress... {status_str}"
+        elif task_type == "craft":
+            return f"🔄 Crafting task in progress... {status_str}"
+        else:
+            return f"📊 Current status: {status_str}"
