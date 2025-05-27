@@ -121,16 +121,9 @@ Current sub-agents available: {sub_agent_names}
             "instruction": instruction,
             "description": "Main coordinator for Minecraft multi-agent system",
             "sub_agents": self.sub_agents,
-            "output_key": "coordinator_response",
-            # Enable agent transfer capabilities
-            "enable_transfers": True,
-            "transfer_mode": "SINGLE"  # Only one transfer per turn
+            "output_key": "coordinator_response"
         }
-        
-        # Add credentials if available
-        if self.ai_credentials:
-            agent_config.update(self.ai_credentials)
-            
+           
         self.agent = LlmAgent(**agent_config)
         logger.info(f"{self.name} created with sub-agents: {sub_agent_names}")
         

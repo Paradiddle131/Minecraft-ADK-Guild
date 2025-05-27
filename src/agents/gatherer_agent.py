@@ -139,10 +139,6 @@ IMPORTANT:
             "tools": self.tools,
             "output_key": "gatherer_response"
         }
-        
-        # Add credentials if available
-        if self.ai_credentials:
-            agent_config.update(self.ai_credentials)
             
         self.agent = LlmAgent(**agent_config)
         logger.info(f"{self.name} created with {len(self.tools)} gathering tools")
