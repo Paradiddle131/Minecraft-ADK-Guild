@@ -135,3 +135,154 @@ Current sub-agents available: {sub_agent_names}
         logger.info(f"{self.name} created with sub-agents: {sub_agent_names}")
         
         return self.agent
+    
+    def _analyze_user_request(self, request: str) -> dict:
+        """Analyze user request to determine task type and delegation
+        
+        Args:
+            request: User's request string
+            
+        Returns:
+            Dictionary with task analysis
+        """
+        request_lower = request.lower()
+        
+        # Define task patterns
+        gather_keywords = [
+            "gather", "collect", "mine", "find", "get", "obtain",
+            "harvest", "dig", "chop", "break", "acquire"
+        ]
+        
+        craft_keywords = [
+            "craft", "make", "create", "build", "construct",
+            "forge", "assemble", "produce", "manufacture"
+        ]
+        
+        inventory_keywords = [
+            "inventory", "have", "items", "what do i",
+            "check", "show", "list", "count"
+        ]
+        
+        # Analyze task type
+        task_type = None
+        confidence = 0
+        
+        # Check for gathering task
+        gather_score = sum(1 for keyword in gather_keywords if keyword in request_lower)
+        if gather_score > 0:
+            task_type = "gather"
+            confidence = min(gather_score / len(gather_keywords), 1.0)
+            
+        # Check for crafting task
+        craft_score = sum(1 for keyword in craft_keywords if keyword in request_lower)
+        if craft_score > gather_score:
+            task_type = "craft"
+            confidence = min(craft_score / len(craft_keywords), 1.0)
+            
+        # Check for inventory query
+        inventory_score = sum(1 for keyword in inventory_keywords if keyword in request_lower)
+        if inventory_score > max(gather_score, craft_score):
+            task_type = "inventory"
+            confidence = min(inventory_score / len(inventory_keywords), 1.0)
+            
+        # Extract target item/resource
+        target = self._extract_target(request, task_type)
+        
+        # Determine complexity
+        complexity = self._assess_complexity(request, task_type)
+        
+        return {
+            "task_type": task_type,
+            "confidence": confidence,
+            "target": target,
+            "complexity": complexity,
+            "original_request": request,
+            "requires_delegation": task_type in ["gather", "craft"],
+            "suggested_agent": self._get_suggested_agent(task_type)
+        }
+        
+    def _extract_target(self, request: str, task_type: str) -> str:
+        """Extract target item or resource from request
+        
+        Args:
+            request: User request
+            task_type: Identified task type
+            
+        Returns:
+            Target item/resource name
+        """
+        import re
+        
+        # Remove common action words
+        action_words = [
+            "please", "can you", "i need", "i want", "help me",
+            "gather", "collect", "craft", "make", "create",
+            "get", "find", "build", "some", "a few"
+        ]
+        
+        cleaned = request.lower()
+        for word in action_words:
+            cleaned = cleaned.replace(word, "")
+            
+        # Extract quantity and item
+        quantity_pattern = r'(\d+)\s+(\w+(?:\s+\w+)*)'
+        match = re.search(quantity_pattern, cleaned)
+        
+        if match:
+            return match.group(2).strip()
+        else:
+            # Get remaining words as target
+            words = cleaned.split()
+            return ' '.join(words).strip()
+            
+    def _assess_complexity(self, request: str, task_type: str) -> str:
+        """Assess task complexity
+        
+        Args:
+            request: User request
+            task_type: Task type
+            
+        Returns:
+            Complexity level (simple/moderate/complex)
+        """
+        # Complex items that require multiple steps
+        complex_items = [
+            "pickaxe", "axe", "sword", "shovel", "hoe",
+            "furnace", "chest", "door", "fence", "stairs"
+        ]
+        
+        # Check for quantity
+        import re
+        quantity_match = re.search(r'(\d+)', request)
+        quantity = int(quantity_match.group(1)) if quantity_match else 1
+        
+        # Check for complex items
+        request_lower = request.lower()
+        has_complex_item = any(item in request_lower for item in complex_items)
+        
+        # Determine complexity
+        if task_type == "inventory":
+            return "simple"
+        elif has_complex_item or quantity > 10:
+            return "complex"
+        elif quantity > 5:
+            return "moderate"
+        else:
+            return "simple"
+            
+    def _get_suggested_agent(self, task_type: str) -> str:
+        """Get suggested agent for task type
+        
+        Args:
+            task_type: Identified task type
+            
+        Returns:
+            Agent name or None
+        """
+        agent_mapping = {
+            "gather": "GathererAgent",
+            "craft": "CrafterAgent",
+            "inventory": None  # Handle directly
+        }
+        
+        return agent_mapping.get(task_type)
