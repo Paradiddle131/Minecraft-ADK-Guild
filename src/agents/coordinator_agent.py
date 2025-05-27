@@ -6,7 +6,7 @@ Implements ADK multi-agent patterns for orchestrating GathererAgent and CrafterA
 import structlog
 from typing import List, Optional, Dict, Any
 from google.adk.agents import LlmAgent
-from google.adk.sessions import SessionService
+from google.adk.sessions import InMemorySessionService
 
 from .base_minecraft_agent import BaseMinecraftAgent
 from ..bridge.bridge_manager import BridgeManager
@@ -22,7 +22,7 @@ class CoordinatorAgent(BaseMinecraftAgent):
         name: str = "CoordinatorAgent",
         model: str = "gemini-2.0-flash",
         sub_agents: Optional[List[Any]] = None,
-        session_service: Optional[SessionService] = None,
+        session_service: Optional[InMemorySessionService] = None,
         bridge_manager: Optional[BridgeManager] = None,
         ai_credentials: Optional[Dict[str, Any]] = None,
         config=None

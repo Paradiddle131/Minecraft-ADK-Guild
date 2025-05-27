@@ -5,7 +5,7 @@ Wraps existing tools with agent-specific state updates
 
 import structlog
 from typing import List, Any, Dict, Optional
-from google.adk.agent_runtime import ToolContext
+from google.adk.tools.tool_context import ToolContext
 
 from .mineflayer_tools import create_mineflayer_tools
 from ..agents.state_schema import StateKeys, ResultStatus, create_gather_result, create_craft_result
