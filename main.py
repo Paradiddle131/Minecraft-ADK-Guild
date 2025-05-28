@@ -209,35 +209,33 @@ async def main():
                         continue
                         
                     response = await run_agent_system(command, runner, session_service)
-                    print(f"\n{response}")
+                    logger.info(f"Agent response: {response}")
                     
                 except KeyboardInterrupt:
-                    print("\nExiting...")
+                    logger.info("Exiting interactive mode...")
                     break
                 except Exception as e:
                     logger.error(f"Error processing command: {e}")
-                    print(f"Error: {str(e)}")
                     
         elif args.command:
             # Single command mode
             response = await run_agent_system(args.command, runner, session_service)
-            print(f"\n{response}")
+            logger.info(f"Agent response: {response}")
         else:
             # No command provided
-            print("Please provide a command or use --interactive mode")
-            print("Examples:")
-            print("  python main.py 'check inventory'")
-            print("  python main.py 'gather 3 oak logs'")
-            print("  python main.py 'craft wooden pickaxe'")
-            print("  python main.py --interactive")
+            logger.info("Please provide a command or use --interactive mode")
+            logger.info("Examples:")
+            logger.info("  python main.py 'check inventory'")
+            logger.info("  python main.py 'gather 3 oak logs'")
+            logger.info("  python main.py 'craft wooden pickaxe'")
+            logger.info("  python main.py --interactive")
             
     except Exception as e:
         logger.error(f"Failed to initialize: {e}")
-        print(f"\nError: {str(e)}")
-        print("\nMake sure:")
-        print("1. Minecraft server is running")
-        print("2. Environment variables are set (see .env.example)")
-        print("3. Google AI API key is configured")
+        logger.error("Make sure:")
+        logger.error("1. Minecraft server is running")
+        logger.error("2. Environment variables are set (see .env.example)")
+        logger.error("3. Google AI API key is configured")
         sys.exit(1)
     finally:
         # Cleanup
