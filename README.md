@@ -108,13 +108,3 @@ Example log output:
   "duration_seconds": 45.3
 }
 ```
-
-## 📖 Documentation
-
-- [CLAUDE.md](CLAUDE.md) - AI assistant guidelines
-- [SETUP.md](SETUP.md) - Detailed setup instructions
-- [QUICKSTART.md](QUICKSTART.md) - Getting started guide
-
-## 🤝 Contributing
-
-This project prioritizes simplicity and clean architecture. Please ensure any contributions maintain these principles.
