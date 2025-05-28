@@ -322,20 +322,25 @@ class BridgeManager:
                 raise RuntimeError("Bot inventory not available")
         
         else:
-            # For other commands, try direct property access
-            method_parts = command.method.split(".")
-            obj = self.bot
-
-            for part in method_parts:
-                obj = getattr(obj, part)
-
-            # Call the method
-            if asyncio.iscoroutinefunction(obj):
-                result = await obj(**command.args)
+            # For all other commands, use the bot's executeCommand method
+            # which routes to the JavaScript handlers
+            if hasattr(self.bot, 'executeCommand'):
+                result = await self.bot.executeCommand({
+                    'method': command.method,
+                    'args': command.args,
+                    'id': command.id if hasattr(command, 'id') else 'cmd'
+                })
+                
+                # Extract the result from the response
+                if isinstance(result, dict):
+                    if result.get('success'):
+                        return result.get('result', {})
+                    else:
+                        raise RuntimeError(result.get('error', 'Command failed'))
+                else:
+                    return result
             else:
-                result = obj(**command.args)
-
-            return result
+                raise RuntimeError(f"Unknown command: {command.method}")
 
     async def close(self):
         """Close the bridge and cleanup resources"""

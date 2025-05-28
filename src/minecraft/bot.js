@@ -3,6 +3,7 @@
  */
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const { Vec3 } = require('vec3');
 const winston = require('winston');
 const { EventEmitter } = require('events');
 const dotenv = require('dotenv');
@@ -358,8 +359,16 @@ class MinecraftBot {
             // Movement commands
             'pathfinder.goto': async ({ x, y, z }) => {
                 const goal = new goals.GoalBlock(x, y, z);
-                await this.bot.pathfinder.goto(goal);
-                return { position: { x, y, z } };
+                
+                try {
+                    // Use the pathfinder's goto method which returns a promise
+                    await this.bot.pathfinder.goto(goal);
+                    return { position: { x, y, z }, reached: true };
+                } catch (error) {
+                    // If movement fails, return error details
+                    logger.error(`Pathfinding failed to (${x}, ${y}, ${z}):`, error.message);
+                    throw new Error(`Failed to reach destination: ${error.message}`);
+                }
             },
 
             'pathfinder.follow': async ({ username, range = 3 }) => {
@@ -520,9 +529,6 @@ class MinecraftBot {
         }
     }
 }
-
-// Vec3 import
-const { Vec3 } = mineflayer;
 
 // Export functions for Python bridge
 async function createBot(options) {
