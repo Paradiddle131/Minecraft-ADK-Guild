@@ -46,3 +46,6 @@ ai_plans/
 
 # Docker devcontainer
 .devcontainer/
+
+# Claude Code
+.claude/

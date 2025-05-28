@@ -360,15 +360,16 @@ class MinecraftBot {
             'pathfinder.goto': async ({ x, y, z }) => {
                 const goal = new goals.GoalBlock(x, y, z);
                 
-                try {
-                    // Use the pathfinder's goto method which returns a promise
-                    await this.bot.pathfinder.goto(goal);
-                    return { position: { x, y, z }, reached: true };
-                } catch (error) {
-                    // If movement fails, return error details
-                    logger.error(`Pathfinding failed to (${x}, ${y}, ${z}):`, error.message);
-                    throw new Error(`Failed to reach destination: ${error.message}`);
-                }
+                // Use setGoal for non-blocking movement
+                // This allows other commands like stop to be processed
+                this.bot.pathfinder.setGoal(goal, true);
+                
+                // Return immediately with target info
+                return { 
+                    target: { x, y, z }, 
+                    started: true,
+                    message: 'Movement started'
+                };
             },
 
             'pathfinder.follow': async ({ username, range = 3 }) => {
@@ -385,6 +386,13 @@ class MinecraftBot {
                 return { stopped: true };
             },
 
+            'pathfinder.isMoving': async () => {
+                return { 
+                    isMoving: this.bot.pathfinder.isMoving(),
+                    goal: this.bot.pathfinder.goal
+                };
+            },
+
             // Block interaction
             'dig': async ({ x, y, z }) => {
                 const block = this.bot.blockAt(new Vec3(x, y, z));
@@ -396,6 +404,8 @@ class MinecraftBot {
 
             'placeBlock': async ({ x, y, z, face = 'top' }) => {
                 const referenceBlock = this.bot.blockAt(new Vec3(x, y, z));
+                if (!referenceBlock) throw new Error('No block at reference position');
+                
                 const faceVector = this.getFaceVector(face);
 
                 await this.bot.placeBlock(referenceBlock, faceVector);

@@ -325,20 +325,24 @@ class BridgeManager:
             # For all other commands, use the bot's executeCommand method
             # which routes to the JavaScript handlers
             if hasattr(self.bot, 'executeCommand'):
-                result = await self.bot.executeCommand({
+                js_result = self.bot.executeCommand({
                     'method': command.method,
                     'args': command.args,
                     'id': command.id if hasattr(command, 'id') else 'cmd'
                 })
                 
-                # Extract the result from the response
-                if isinstance(result, dict):
-                    if result.get('success'):
-                        return result.get('result', {})
+                # Handle JavaScript proxy object
+                if hasattr(js_result, 'success'):
+                    # Access proxy properties directly
+                    if js_result.success:
+                        # Return the actual result data
+                        return js_result.result
                     else:
-                        raise RuntimeError(result.get('error', 'Command failed'))
+                        error_msg = js_result.error if hasattr(js_result, 'error') else 'Command failed'
+                        raise RuntimeError(error_msg)
                 else:
-                    return result
+                    # Fallback for unexpected result format
+                    return js_result
             else:
                 raise RuntimeError(f"Unknown command: {command.method}")
 
@@ -361,7 +365,7 @@ class BridgeManager:
 
     # Convenience methods for common operations
     async def move_to(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Move bot to specific coordinates"""
+        """Move bot to specific coordinates (non-blocking)"""
         return await self.execute_command("pathfinder.goto", x=x, y=y, z=z)
 
     async def dig_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
