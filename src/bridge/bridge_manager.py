@@ -101,7 +101,6 @@ class BridgeManager:
                 'username': bot_username,
                 'auth': 'offline',
                 'version': minecraft_version,
-                'enableEventClient': False,
                 'timeout': 60000
             }, timeout=90000)
 
@@ -118,7 +117,6 @@ class BridgeManager:
 
             # bot_result.bot is a MinecraftBot instance with executeCommand method
             self.bot = bot_result.bot
-            self.event_client = bot_result.eventClient
 
             logger.info("Waiting for bot to spawn in world...")
             self.is_spawned = await self._wait_for_spawn_with_timeout()
@@ -128,7 +126,7 @@ class BridgeManager:
             else:
                 logger.warning("Bot created but not spawned - server might not be running")
 
-            logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}, eventClient={self.event_client is not None}")
+            logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}")
 
             await self._setup_event_listeners()
 
