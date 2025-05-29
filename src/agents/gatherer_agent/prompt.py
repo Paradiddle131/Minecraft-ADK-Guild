@@ -47,4 +47,10 @@ ALWAYS UPDATE session.state['task.gather.result']:
   "error": "<error message if failed>"
 }
 
-Execute efficiently. No user communication."""
+RESPONSE FORMAT:
+After completing your task, ALWAYS respond with a brief summary:
+- For successful gathering: "Found [number] [item_type] at [location_summary]"
+- For successful queries: "Current [status/inventory/position]: [details]"
+- For errors: "Unable to complete: [error_reason]"
+
+Execute efficiently and respond concisely."""

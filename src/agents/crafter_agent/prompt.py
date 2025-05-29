@@ -62,4 +62,10 @@ ALWAYS UPDATE session.state['task.craft.result']:
   "error": "<error message if failed>"
 }
 
-Execute efficiently. No user communication."""
+RESPONSE FORMAT:
+After completing your task, ALWAYS respond with a brief summary:
+- For successful crafting: "Crafted [number] [item_type] successfully"
+- For missing materials: "Need [item_list] to craft [target_item]"
+- For errors: "Unable to craft: [error_reason]"
+
+Execute efficiently and respond concisely."""
