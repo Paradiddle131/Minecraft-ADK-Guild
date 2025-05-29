@@ -28,7 +28,7 @@ class GathererAgent(BaseMinecraftAgent):
     def __init__(
         self,
         name: str = "GathererAgent",
-        model: str = "gemini-2.0-flash",
+        model: Optional[str] = None,
         tools: Optional[List[Any]] = None,
         session_service: Optional[InMemorySessionService] = None,
         bridge_manager: Optional[BridgeManager] = None,
@@ -49,7 +49,7 @@ class GathererAgent(BaseMinecraftAgent):
         # Initialize base class
         super().__init__(name, bridge_manager, config)
         
-        self.model = model
+        self.model = model or (config.default_model if config else "gemini-2.0-flash")
         self.tools = tools or []
         self.session_service = session_service
         if ai_credentials:
