@@ -8,6 +8,13 @@ from google.adk.agents import LlmAgent
 from google.adk.sessions import InMemorySessionService
 
 from ..base_minecraft_agent import BaseMinecraftAgent
+from ..callbacks import (
+    log_agent_thoughts_callback, 
+    log_tool_execution_callback, 
+    log_tool_call_callback,
+    log_before_agent_callback,
+    log_after_agent_callback
+)
 from ...bridge.bridge_manager import BridgeManager
 from ...logging_config import get_logger
 from .prompt import CRAFTER_INSTRUCTIONS
@@ -72,7 +79,12 @@ class CrafterAgent(BaseMinecraftAgent):
             "instruction": self._create_instruction(),
             "description": "Specialized agent for Minecraft item crafting",
             "tools": self.tools,
-            "output_key": "crafter_response"
+            "output_key": "crafter_response",
+            "before_agent_callback": log_before_agent_callback,
+            "after_agent_callback": log_after_agent_callback,
+            "after_model_callback": log_agent_thoughts_callback,
+            "before_tool_callback": log_tool_call_callback,
+            "after_tool_callback": log_tool_execution_callback
         }
         
         self.agent = LlmAgent(**agent_config)
