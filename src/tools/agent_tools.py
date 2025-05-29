@@ -189,9 +189,18 @@ def create_crafter_tools(bridge_manager) -> List[Any]:
                     logger.info(f"Successfully crafted {crafted} {recipe}")
                 else:
                     error_msg = result.get("error", "Unknown crafting error")
+                    missing_materials = result.get("missing_materials", {})
+                    
+                    # Convert missing_materials dict to list format expected by create_craft_result
+                    missing_list = []
+                    if missing_materials:
+                        for item, count in missing_materials.items():
+                            missing_list.append({"item": item, "count": count})
+                    
                     tool_context.state[StateKeys.CRAFT_RESULT] = create_craft_result(
                         status=ResultStatus.ERROR,
                         item_type=recipe,
+                        missing_materials=missing_list if missing_list else None,
                         error=error_msg
                     )
                     logger.error(f"Failed to craft {recipe}: {error_msg}")

@@ -482,18 +482,143 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
     Returns:
         Dictionary with craft result
     """
-    # Simplified for POC - full implementation would check recipes
     try:
-        logger.info(f"Crafting {count} {recipe}")
+        logger.info(f"Attempting to craft {count} {recipe}")
 
-        # This would use actual Mineflayer crafting API
-        await _bridge_manager.execute_command("craft", recipe=recipe, count=count)
-
-        return {"status": "success", "crafted": recipe, "count": count}
+        # Execute craft command through bridge
+        result = await _bridge_manager.execute_command("craft", recipe=recipe, count=count)
+        
+        # Check if result is valid
+        if result is None:
+            logger.error("Craft command returned None")
+            return {
+                "status": "error",
+                "error": "Craft command failed - no response from bot"
+            }
+        
+        logger.debug(f"Craft result type: {type(result)}, hasattr success: {hasattr(result, 'success') if result else 'N/A'}")
+        
+        # Handle JSPyBridge Proxy objects
+        if hasattr(result, 'success'):
+            # Access proxy properties directly
+            success = result.success
+            if success:
+                crafted_count = result.crafted if hasattr(result, 'crafted') else 0
+                logger.info(f"Successfully crafted {crafted_count} {recipe}")
+                return {
+                    "status": "success",
+                    "crafted": recipe,
+                    "count": crafted_count
+                }
+            else:
+                # Handle crafting failure
+                error_msg = result.error if hasattr(result, 'error') else f"Failed to craft {recipe}"
+                missing_materials = result.missing_materials if hasattr(result, 'missing_materials') else {}
+                
+                # Convert JSPyBridge proxy to dict if needed
+                if missing_materials and not isinstance(missing_materials, dict):
+                    # Try to convert proxy object to dict
+                    try:
+                        # JSPyBridge proxy objects need special handling
+                        missing_dict = {}
+                        
+                        # Get the string representation to find what properties exist
+                        proxy_str = str(missing_materials)
+                        logger.debug(f"Missing materials proxy: {proxy_str}")
+                        
+                        # Extract properties from the proxy representation
+                        # The format is typically: <Proxy(dict) {'item': count, ...}>
+                        import re
+                        match = re.search(r'\{([^}]+)\}', proxy_str)
+                        if match:
+                            content = match.group(1)
+                            # Parse key-value pairs
+                            for pair in content.split(','):
+                                if ':' in pair:
+                                    key, value = pair.split(':', 1)
+                                    key = key.strip().strip("'").strip('"')
+                                    value = value.strip()
+                                    try:
+                                        missing_dict[key] = int(value)
+                                    except ValueError:
+                                        missing_dict[key] = value
+                        
+                        # If parsing failed, try direct attribute access for common items
+                        if not missing_dict:
+                            common_materials = ['planks', 'oak_planks', 'birch_planks', 'spruce_planks', 
+                                              'stick', 'sticks', 'oak_log', 'birch_log', 'cobblestone', 
+                                              'iron_ingot', 'gold_ingot', 'diamond']
+                            for material in common_materials:
+                                if hasattr(missing_materials, material):
+                                    missing_dict[material] = getattr(missing_materials, material)
+                        
+                        # If we found something, use it
+                        if missing_dict:
+                            missing_materials = missing_dict
+                        else:
+                            missing_materials = {"unknown": "Check inventory for required materials"}
+                            
+                    except Exception as e:
+                        logger.debug(f"Failed to convert missing_materials proxy: {e}")
+                        missing_materials = {"unknown": "Unable to determine missing materials"}
+                
+                logger.error(f"Crafting failed: {error_msg}")
+                
+                response = {
+                    "status": "error",
+                    "error": error_msg
+                }
+                
+                # Include missing materials if provided by the bot
+                if missing_materials:
+                    response["missing_materials"] = missing_materials
+                    
+                return response
+        
+        # Fallback for dict-like results
+        elif isinstance(result, dict) and "success" in result:
+            if result.get("success", False):
+                crafted_count = result.get("crafted", 0)
+                logger.info(f"Successfully crafted {crafted_count} {recipe}")
+                return {
+                    "status": "success",
+                    "crafted": recipe,
+                    "count": crafted_count
+                }
+            else:
+                # Handle dict failure  
+                error_msg = result.get("error", f"Failed to craft {recipe}")
+                missing_materials = result.get("missing_materials", {})
+                
+                logger.error(f"Crafting failed: {error_msg}")
+                
+                response = {
+                    "status": "error",
+                    "error": error_msg
+                }
+                
+                # Include missing materials if provided by the bot
+                if missing_materials:
+                    response["missing_materials"] = missing_materials
+                    
+                return response
+        else:
+            # Unexpected result format
+            logger.error(f"Unexpected craft result format: {type(result)}")
+            return {
+                "status": "error",
+                "error": f"Unexpected result format from craft command: {type(result)}"
+            }
 
     except Exception as e:
-        logger.error(f"Crafting failed: {e}")
-        return {"status": "error", "error": str(e)}
+        error_msg = str(e)
+        logger.error(f"Crafting exception: {error_msg}", exc_info=True)
+        
+        # Try to extract meaningful error information
+        return {
+            "status": "error",
+            "error": f"Crafting failed: {error_msg}"
+        }
 
 
 async def send_chat(message: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
