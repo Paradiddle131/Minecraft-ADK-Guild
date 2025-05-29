@@ -2,8 +2,15 @@
 Minecraft Data Service - Centralized Python service for all Minecraft data lookups
 """
 import logging
+import sys
+import os
 from typing import Dict, List, Optional, Any, Union
-from minecraft_data import minecraft_data
+
+# Add python-minecraft-data to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, 'python-minecraft-data'))
+
+import minecraft_data
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +25,7 @@ class MinecraftDataService:
             mc_version: Minecraft version string (e.g., "1.21.1")
         """
         try:
+            # Initialize minecraft_data as shown in example.py
             self.mc_data = minecraft_data(mc_version)
             self.version = mc_version
             logger.info(f"Initialized MinecraftDataService for version {mc_version}")
@@ -35,7 +43,8 @@ class MinecraftDataService:
             Block data dict or None if not found
         """
         try:
-            return self.mc_data.blocks_by_name.get(name)
+            # blocks_name directly contains the full block data
+            return self.mc_data.blocks_name.get(name)
         except Exception as e:
             logger.error(f"Error getting block by name '{name}': {e}")
             return None
@@ -50,7 +59,10 @@ class MinecraftDataService:
             Block data dict or None if not found
         """
         try:
-            return self.mc_data.blocks[block_id] if block_id in self.mc_data.blocks else None
+            # Use blocks_list for ID lookup
+            if 0 <= block_id < len(self.mc_data.blocks_list):
+                return self.mc_data.blocks_list[block_id]
+            return None
         except Exception as e:
             logger.error(f"Error getting block by id {block_id}: {e}")
             return None
@@ -65,7 +77,17 @@ class MinecraftDataService:
             Item data dict or None if not found
         """
         try:
-            return self.mc_data.items_by_name.get(name)
+            # items_name directly contains the full item data
+            item = self.mc_data.items_name.get(name)
+            if item:
+                return item
+            
+            # If not found, try using find_item_or_block method
+            result = self.mc_data.find_item_or_block(name)
+            if result:
+                return result
+                
+            return None
         except Exception as e:
             logger.error(f"Error getting item by name '{name}': {e}")
             return None
@@ -80,7 +102,10 @@ class MinecraftDataService:
             Item data dict or None if not found
         """
         try:
-            return self.mc_data.items[item_id] if item_id in self.mc_data.items else None
+            # Use items_list for ID lookup
+            if 0 <= item_id < len(self.mc_data.items_list):
+                return self.mc_data.items_list[item_id]
+            return None
         except Exception as e:
             logger.error(f"Error getting item by id {item_id}: {e}")
             return None
@@ -95,23 +120,29 @@ class MinecraftDataService:
             List of matching blocks
         """
         try:
-            # python-minecraft-data doesn't have a direct find_blocks method
-            # We'll implement a basic filter
             results = []
             
             # Filter by name pattern if provided
             if 'name_pattern' in options:
                 pattern = options['name_pattern'].lower()
-                for name, block in self.mc_data.blocks_by_name.items():
+                for name, block_data in self.mc_data.blocks_name.items():
                     if pattern in name.lower():
-                        results.append(block)
+                        results.append(block_data)
             
             # Filter by hardness range if provided
             if 'min_hardness' in options or 'max_hardness' in options:
                 min_h = options.get('min_hardness', 0)
                 max_h = options.get('max_hardness', float('inf'))
-                results = [b for b in (results or self.mc_data.blocks_by_name.values()) 
-                          if min_h <= (b.get('hardness', 0)) <= max_h]
+                
+                # If we already have results from name filter, filter those
+                if results:
+                    results = [b for b in results 
+                              if min_h <= (b.get('hardness', 0)) <= max_h]
+                else:
+                    # Otherwise search all blocks
+                    for block_data in self.mc_data.blocks_name.values():
+                        if min_h <= (block_data.get('hardness', 0)) <= max_h:
+                            results.append(block_data)
             
             return results
         except Exception as e:
@@ -128,11 +159,8 @@ class MinecraftDataService:
             List of recipe dicts
         """
         try:
-            recipes = []
-            for recipe in self.mc_data.recipes.values():
-                if recipe.get('result', {}).get('id') == item_id:
-                    recipes.append(recipe)
-            return recipes
+            # Recipes are keyed by result item ID as string
+            return self.mc_data.recipes.get(str(item_id), [])
         except Exception as e:
             logger.error(f"Error getting recipes for item id {item_id}: {e}")
             return []
@@ -161,11 +189,10 @@ class MinecraftDataService:
             Food points value or 0 if not a food item
         """
         try:
-            # Check if foods data is available
-            if hasattr(self.mc_data, 'foods_by_name'):
-                food = self.mc_data.foods_by_name.get(item_name)
-                if food:
-                    return food.get('foodPoints', 0)
+            # Check if item is in foods_name
+            food_data = self.mc_data.foods_name.get(item_name)
+            if food_data:
+                return food_data.get('foodPoints', 0)
             
             # Fallback to hardcoded values for common foods
             food_values = {
@@ -186,7 +213,6 @@ class MinecraftDataService:
                 'potato': 1,
                 'melon_slice': 2,
                 'pumpkin_pie': 8,
-                'cooked_porkchop': 8,
                 'steak': 8,
                 'sweet_berries': 2,
                 'glow_berries': 2
@@ -206,11 +232,10 @@ class MinecraftDataService:
             Saturation value or 0.0 if not a food item
         """
         try:
-            # Check if foods data is available
-            if hasattr(self.mc_data, 'foods_by_name'):
-                food = self.mc_data.foods_by_name.get(item_name)
-                if food:
-                    return food.get('saturation', 0.0)
+            # Check if item is in foods_name
+            food_data = self.mc_data.foods_name.get(item_name)
+            if food_data:
+                return food_data.get('saturation', 0.0)
             
             # Fallback to hardcoded values
             saturation_values = {
@@ -249,17 +274,27 @@ class MinecraftDataService:
         Returns:
             True if crafting table required, False if can craft in inventory
         """
-        # Items that can be crafted in 2x2 inventory grid
-        inventory_craftable = {
-            'stick', 'planks', 'oak_planks', 'birch_planks', 'spruce_planks',
-            'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 
-            'cherry_planks', 'warped_planks', 'crimson_planks', 'bamboo_planks',
-            'crafting_table', 'torch', 'bowl', 'mushroom_stew', 'sugar',
-            'paper', 'book', 'clay', 'brick', 'glowstone', 'quartz_block',
-            'wool', 'snow_block', 'clay_block'
-        }
+        # Get recipes for this item
+        recipes = self.get_recipes_for_item_name(item_name)
         
-        return item_name not in inventory_craftable
+        if not recipes:
+            # No recipe found, assume it needs crafting table if craftable
+            return True
+            
+        # Check if any recipe can fit in 2x2 grid
+        for recipe in recipes:
+            if 'inShape' in recipe:
+                # Shaped recipe - check dimensions
+                shape = recipe['inShape']
+                if len(shape) <= 2 and all(len(row) <= 2 for row in shape):
+                    return False  # Can craft in inventory
+            elif 'ingredients' in recipe:
+                # Shapeless recipe - check ingredient count
+                if len(recipe['ingredients']) <= 4:
+                    return False  # Can craft in inventory
+        
+        # Default to needing crafting table
+        return True
     
     def normalize_item_name(self, item_name: str) -> str:
         """Normalize item names to handle common variations
@@ -313,7 +348,7 @@ class MinecraftDataService:
             List of all item data dicts
         """
         try:
-            return list(self.mc_data.items_by_name.values())
+            return list(self.mc_data.items_name.values())
         except Exception as e:
             logger.error(f"Error getting all items: {e}")
             return []
@@ -325,7 +360,7 @@ class MinecraftDataService:
             List of all block data dicts
         """
         try:
-            return list(self.mc_data.blocks_by_name.values())
+            return list(self.mc_data.blocks_name.values())
         except Exception as e:
             logger.error(f"Error getting all blocks: {e}")
             return []
