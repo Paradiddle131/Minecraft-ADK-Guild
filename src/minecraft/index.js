@@ -23,8 +23,24 @@ async function startBot(options = {}) {
         // Create bot
         const bot = await createBot(botOptions);
 
-        // Return bot for external control
-        return { bot };
+        // Return bot interface for bridge
+        return {
+            bot: bot,
+            executeCommand: async (cmd) => {
+                try {
+                    const result = await bot.executeCommand(cmd);
+                    return result;
+                } catch (error) {
+                    console.error(`Command ${cmd.method} error:`, error);
+                    return {
+                        id: cmd.id,
+                        success: false,
+                        error: error.message || error.toString()
+                    };
+                }
+            },
+            quit: () => bot.quit()
+        };
 
     } catch (error) {
         console.error('Failed to start bot:', error);

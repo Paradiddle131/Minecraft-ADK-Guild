@@ -367,18 +367,19 @@ class MinecraftBot {
                     }
                     
                     const startTime = Date.now();
-                    const startPos = this.bot.entity.position;
-                    console.log(`Starting pathfinding to (${x}, ${y}, ${z})`);
+                    const startPos = this.bot.entity.position.clone();
+                    console.log(`Starting pathfinding to (${x}, ${y}, ${z}) from (${startPos.x.toFixed(1)}, ${startPos.y.toFixed(1)}, ${startPos.z.toFixed(1)})`);
                     
                     // Track progress
                     let lastProgressUpdate = 0;
                     let pathStatus = 'computing';
+                    let timeoutId = null;
                     
+                    // Progress tracking function
                     const progressHandler = (result) => {
                         pathStatus = result.status;
                         const now = Date.now();
                         if (now - lastProgressUpdate > 1000) { // Update every second
-                            const remainingMoves = result.path ? result.path.length : '?';
                             const currentPos = this.bot.entity.position;
                             const distanceToGoal = Math.sqrt(
                                 Math.pow(currentPos.x - x, 2) + 
@@ -387,72 +388,99 @@ class MinecraftBot {
                             );
                             
                             // Emit progress event
-                            this.eventEmitter.emitMovementProgressEvent({
-                                target: { x, y, z },
-                                current_position: {
-                                    x: Math.floor(currentPos.x),
-                                    y: Math.floor(currentPos.y),
-                                    z: Math.floor(currentPos.z)
-                                },
-                                distance_remaining: distanceToGoal,
-                                path_status: result.status,
-                                remaining_moves: remainingMoves,
-                                elapsed_time: now - startTime
-                            });
+                            if (this.eventEmitter) {
+                                this.eventEmitter.emitMovementProgressEvent({
+                                    target: { x, y, z },
+                                    current_position: {
+                                        x: Math.floor(currentPos.x),
+                                        y: Math.floor(currentPos.y),
+                                        z: Math.floor(currentPos.z)
+                                    },
+                                    distance_remaining: distanceToGoal,
+                                    path_status: result.status,
+                                    elapsed_time: now - startTime
+                                });
+                            }
                             
-                            console.log(`Path progress: status=${result.status}, remaining_moves=${remainingMoves}, distance=${distanceToGoal.toFixed(1)}`);
+                            console.log(`Path progress: status=${result.status}, distance=${distanceToGoal.toFixed(1)}`);
                             lastProgressUpdate = now;
                         }
                     };
                     
-                    this.bot.on('path_update', progressHandler);
+                    // Attach progress handler to pathfinder, not bot
+                    if (this.bot.pathfinder.on) {
+                        this.bot.pathfinder.on('path_update', progressHandler);
+                    }
                     
-                    // Create timeout promise
-                    const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => {
-                            this.bot.pathfinder.stop();
-                            reject(new Error(`Movement timeout after ${timeout}ms`));
-                        }, timeout);
+                    // Create movement promise
+                    const movementPromise = new Promise(async (resolve, reject) => {
+                        try {
+                            // Set timeout
+                            timeoutId = setTimeout(() => {
+                                console.log('Movement timeout - stopping pathfinder');
+                                this.bot.pathfinder.stop();
+                                reject(new Error(`Movement timeout after ${timeout}ms`));
+                            }, timeout);
+                            
+                            // Execute goto and wait for completion
+                            await this.bot.pathfinder.goto(goal);
+                            
+                            // Clear timeout on success
+                            if (timeoutId) {
+                                clearTimeout(timeoutId);
+                                timeoutId = null;
+                            }
+                            
+                            resolve();
+                        } catch (error) {
+                            // Clear timeout on error
+                            if (timeoutId) {
+                                clearTimeout(timeoutId);
+                                timeoutId = null;
+                            }
+                            reject(error);
+                        }
                     });
                     
-                    try {
-                        // Race between goto completion and timeout
-                        await Promise.race([
-                            this.bot.pathfinder.goto(goal),
-                            timeoutPromise
-                        ]);
-                        
-                        // Get actual position after movement
-                        const pos = this.bot.entity.position;
-                        const distance = Math.sqrt(
-                            Math.pow(pos.x - x, 2) + 
-                            Math.pow(pos.y - y, 2) + 
-                            Math.pow(pos.z - z, 2)
-                        );
-                        
-                        const totalTime = Date.now() - startTime;
-                        console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
-                        
-                        return {
-                            target: { x, y, z },
-                            actual_position: { 
-                                x: Math.floor(pos.x), 
-                                y: Math.floor(pos.y), 
-                                z: Math.floor(pos.z) 
-                            },
-                            distance_to_target: distance,
-                            status: 'completed',
-                            message: 'Movement completed successfully',
-                            duration_ms: totalTime
-                        };
-                        
-                    } finally {
-                        // Clean up event listener
-                        this.bot.removeListener('path_update', progressHandler);
+                    // Wait for movement to complete
+                    await movementPromise;
+                    
+                    // Get actual position after movement
+                    const pos = this.bot.entity.position;
+                    const distance = Math.sqrt(
+                        Math.pow(pos.x - x, 2) + 
+                        Math.pow(pos.y - y, 2) + 
+                        Math.pow(pos.z - z, 2)
+                    );
+                    
+                    const totalTime = Date.now() - startTime;
+                    console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
+                    
+                    // Clean up event listener
+                    if (this.bot.pathfinder.removeListener) {
+                        this.bot.pathfinder.removeListener('path_update', progressHandler);
                     }
+                    
+                    return {
+                        target: { x, y, z },
+                        actual_position: { 
+                            x: Math.floor(pos.x), 
+                            y: Math.floor(pos.y), 
+                            z: Math.floor(pos.z) 
+                        },
+                        distance_to_target: distance,
+                        status: 'completed',
+                        message: 'Movement completed successfully',
+                        duration_ms: totalTime
+                    };
                     
                 } catch (error) {
                     console.error(`Pathfinding failed:`, error);
+                    
+                    // Clean up event listener on error
+                    if (this.bot.pathfinder && this.bot.pathfinder.removeListener) {
+                        this.bot.pathfinder.removeListener('path_update', progressHandler);
+                    }
                     
                     // Get current position even on failure
                     const pos = this.bot.entity.position;
@@ -462,20 +490,16 @@ class MinecraftBot {
                         Math.pow(pos.z - startPos.z, 2)
                     );
                     
-                    const result = {
-                        target: { x, y, z },
-                        actual_position: { 
-                            x: Math.floor(pos.x), 
-                            y: Math.floor(pos.y), 
-                            z: Math.floor(pos.z) 
-                        },
-                        status: 'failed',
-                        error_reason: error.message,
-                        partial_distance_traveled: partialDistance,
-                        last_path_status: pathStatus
-                    };
+                    const errorMsg = error.message || error.toString();
                     
-                    throw new Error(`Failed to reach (${x}, ${y}, ${z}): ${error.message || error}`);
+                    // Check for specific error types
+                    if (errorMsg.includes('timeout')) {
+                        throw new Error(`Movement timeout: Failed to reach (${x}, ${y}, ${z}) within ${timeout}ms`);
+                    } else if (errorMsg.includes('No path')) {
+                        throw new Error(`No path found to (${x}, ${y}, ${z}). The location may be blocked or unreachable.`);
+                    } else {
+                        throw new Error(`Movement failed: ${errorMsg}`);
+                    }
                 }
             },
 

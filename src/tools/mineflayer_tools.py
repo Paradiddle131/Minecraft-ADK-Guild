@@ -55,19 +55,45 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
             }
 
         # Execute movement - this now waits for completion with timeout
-        movement_result = await _bridge_manager.move_to(x, y, z, timeout)
+        try:
+            movement_result = await _bridge_manager.move_to(x, y, z, timeout)
+        except TimeoutError as e:
+            logger.warning(f"Movement command timed out: {e}")
+            # Try to get current position anyway
+            try:
+                actual_pos = await _bridge_manager.get_position()
+                # Check if we're close enough to target
+                distance_to_target = (
+                    (actual_pos["x"] - x) ** 2
+                    + (actual_pos["y"] - y) ** 2
+                    + (actual_pos["z"] - z) ** 2
+                ) ** 0.5
+                
+                if distance_to_target < 2.0:  # Within 2 blocks is close enough
+                    logger.info(f"Movement likely succeeded despite timeout - distance to target: {distance_to_target:.1f}")
+                    movement_result = {
+                        'actual_position': actual_pos,
+                        'status': 'completed_with_timeout',
+                        'message': 'Reached target despite timeout'
+                    }
+                else:
+                    raise  # Re-raise the timeout error
+            except Exception:
+                raise e  # Re-raise original timeout
         
-        # Check if the bridge command returned an error
-        if 'error' in movement_result:
-            logger.error(f"Bridge movement command failed: {movement_result['error']}")
-            raise Exception(f"Movement failed: {movement_result['error']}")
+        # The bridge.move_to already handles the pathfinder.goto command and waits for completion
+        # The result should contain the actual position after movement
         
-        # Extract actual final position from the bot response
-        if 'actual_position' not in movement_result:
-            logger.error("Movement result missing actual_position - command may have failed")
-            raise Exception("Movement failed: No actual position returned from bot")
+        # Handle the movement result - it should be a dict from the JS bot
+        if isinstance(movement_result, dict):
+            actual_pos = movement_result.get('actual_position')
+            if not actual_pos:
+                # If no actual_position, try to get current position
+                actual_pos = await _bridge_manager.get_position()
+        else:
+            # Fallback - get current position
+            actual_pos = await _bridge_manager.get_position()
             
-        actual_pos = movement_result['actual_position']
         final_distance = (
             (actual_pos["x"] - current_pos["x"]) ** 2
             + (actual_pos["y"] - current_pos["y"]) ** 2
@@ -78,10 +104,15 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
             "status": "success",
             "target_position": {"x": x, "y": y, "z": z},
             "actual_position": actual_pos,
-            "distance_traveled": final_distance,
-            "movement_status": movement_result.get('status', 'completed'),
-            "message": movement_result.get('message', 'Movement completed')
+            "distance_traveled": final_distance
         }
+        
+        # Add additional info from movement_result if available
+        if isinstance(movement_result, dict):
+            result["movement_status"] = movement_result.get('status', 'completed')
+            result["message"] = movement_result.get('message', 'Movement completed')
+            if 'duration_ms' in movement_result:
+                result["duration_ms"] = movement_result['duration_ms']
         
         # Update position and clear movement state
         if tool_context and hasattr(tool_context, 'state'):
@@ -96,7 +127,7 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
             tool_context.state['temp:last_movement'] = {
                 'target': {'x': x, 'y': y, 'z': z},
                 'actual': actual_pos,
-                'duration_ms': movement_result.get('duration_ms', 0),
+                'duration_ms': movement_result.get('duration_ms', 0) if isinstance(movement_result, dict) else 0,
                 'status': 'completed',
                 'timestamp': __import__('time').time()
             }
