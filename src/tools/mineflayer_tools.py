@@ -18,60 +18,154 @@ def _set_bridge_manager(bridge):
     _bridge_manager = bridge
 
 
-async def move_to(x: int, y: int, z: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Move bot to specified coordinates using pathfinding.
+    
+    This tool now properly waits for the bot to reach the destination before returning.
+    The bot will pathfind to the target coordinates and return when movement is complete.
+    Includes timeout protection to prevent infinite waits if pathfinding gets stuck.
 
     Args:
         x: Target X coordinate
         y: Target Y coordinate  
         z: Target Z coordinate
+        timeout: Maximum time in milliseconds to wait for movement (default: 30000ms = 30s)
 
     Returns:
-        Dictionary with movement result
+        Dictionary with movement result including actual final position
     """
     try:
         # Get current position for distance calculation
         current_pos = await _bridge_manager.get_position()
-        distance = (
+        start_distance = (
             (x - current_pos["x"]) ** 2
             + (y - current_pos["y"]) ** 2
             + (z - current_pos["z"]) ** 2
         ) ** 0.5
 
-        logger.info(f"Moving to ({x}, {y}, {z}), distance: {distance:.1f}")
+        logger.info(f"Starting movement to ({x}, {y}, {z}), distance: {start_distance:.1f}")
+        
+        # Store movement start in state
+        if tool_context and hasattr(tool_context, 'state'):
+            tool_context.state['temp:movement_in_progress'] = {
+                'target': {'x': x, 'y': y, 'z': z},
+                'start_position': current_pos,
+                'start_time': __import__('time').time(),
+                'start_distance': start_distance
+            }
 
-        # Execute movement
-        await _bridge_manager.move_to(x, y, z)
+        # Execute movement - this now waits for completion with timeout
+        movement_result = await _bridge_manager.move_to(x, y, z, timeout)
+        
+        # Check if the bridge command returned an error
+        if 'error' in movement_result:
+            logger.error(f"Bridge movement command failed: {movement_result['error']}")
+            raise Exception(f"Movement failed: {movement_result['error']}")
+        
+        # Extract actual final position from the bot response
+        if 'actual_position' not in movement_result:
+            logger.error("Movement result missing actual_position - command may have failed")
+            raise Exception("Movement failed: No actual position returned from bot")
+            
+        actual_pos = movement_result['actual_position']
+        final_distance = (
+            (actual_pos["x"] - current_pos["x"]) ** 2
+            + (actual_pos["y"] - current_pos["y"]) ** 2
+            + (actual_pos["z"] - current_pos["z"]) ** 2
+        ) ** 0.5
 
         result = {
             "status": "success",
-            "position": {"x": x, "y": y, "z": z},
-            "distance_traveled": distance,
+            "target_position": {"x": x, "y": y, "z": z},
+            "actual_position": actual_pos,
+            "distance_traveled": final_distance,
+            "movement_status": movement_result.get('status', 'completed'),
+            "message": movement_result.get('message', 'Movement completed')
         }
         
-        # Update position in session state if tool_context is provided
+        # Update position and clear movement state
         if tool_context and hasattr(tool_context, 'state'):
             tool_context.state['minecraft_position'] = {
-                'x': x,
-                'y': y,
-                'z': z,
+                'x': actual_pos['x'],
+                'y': actual_pos['y'], 
+                'z': actual_pos['z'],
                 'timestamp': __import__('time').time()
             }
-            logger.info("Updated position in session state")
+            # Clear temp movement state by setting to None
+            tool_context.state['temp:movement_in_progress'] = None
+            tool_context.state['temp:last_movement'] = {
+                'target': {'x': x, 'y': y, 'z': z},
+                'actual': actual_pos,
+                'duration_ms': movement_result.get('duration_ms', 0),
+                'status': 'completed',
+                'timestamp': __import__('time').time()
+            }
+            logger.info(f"Movement completed to ({actual_pos['x']}, {actual_pos['y']}, {actual_pos['z']})")
         
         return result
 
     except Exception as e:
         logger.error(f"Movement failed: {e}")
+        
+        # Attempt recovery for certain failure types
+        if "timeout" in str(e).lower() or "no path" in str(e).lower() or "stuck" in str(e).lower():
+            logger.info("Attempting movement recovery with adjusted goals")
+            
+            # Try nearby alternative goals
+            for offset in [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]:
+                alt_x = x + offset[0]
+                alt_y = y + offset[1]
+                alt_z = z + offset[2]
+                
+                try:
+                    logger.info(f"Trying alternative goal: ({alt_x}, {alt_y}, {alt_z})")
+                    recovery_result = await _bridge_manager.move_to(alt_x, alt_y, alt_z, timeout=15000)
+                    
+                    if 'error' not in recovery_result and 'actual_position' in recovery_result:
+                        actual_pos = recovery_result['actual_position']
+                        logger.info(f"Recovery successful, reached ({actual_pos['x']}, {actual_pos['y']}, {actual_pos['z']})")
+                        
+                        # Update state with recovery result
+                        if tool_context and hasattr(tool_context, 'state'):
+                            tool_context.state['minecraft_position'] = {
+                                'x': actual_pos['x'],
+                                'y': actual_pos['y'], 
+                                'z': actual_pos['z'],
+                                'timestamp': __import__('time').time()
+                            }
+                            tool_context.state['temp:movement_in_progress'] = None
+                            tool_context.state['temp:last_movement'] = {
+                                'target': {'x': x, 'y': y, 'z': z},
+                                'actual': actual_pos,
+                                'status': 'completed_with_recovery',
+                                'recovery_offset': offset,
+                                'timestamp': __import__('time').time()
+                            }
+                        
+                        return {
+                            "status": "success",
+                            "target_position": {"x": x, "y": y, "z": z},
+                            "actual_position": actual_pos,
+                            "movement_status": "completed_with_recovery",
+                            "message": f"Reached nearby position after recovery (offset: {offset})"
+                        }
+                        
+                except Exception as recovery_error:
+                    logger.debug(f"Recovery attempt failed: {recovery_error}")
+                    continue
+        
+        # If recovery failed or wasn't attempted, return error
         error_result = {"status": "error", "error": str(e)}
         
-        # Save movement error if tool_context is provided
+        # Save movement error and clear temp state
         if tool_context and hasattr(tool_context, 'state'):
             tool_context.state['minecraft_last_movement_error'] = {
                 'error': str(e),
                 'target': {'x': x, 'y': y, 'z': z},
                 'timestamp': __import__('time').time()
             }
+            # Clear temp movement state on error by setting to None
+            tool_context.state['temp:movement_in_progress'] = None
         
         return error_result
 
@@ -182,6 +276,44 @@ async def get_position() -> Dict[str, Any]:
             
     except Exception as e:
         logger.error(f"Error getting position: {e}")
+        return {
+            'status': 'error',
+            'error': str(e)
+        }
+
+
+async def get_movement_status(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Check if the bot is currently moving and get movement details.
+    
+    Returns:
+        Dictionary with movement status and details
+    """
+    try:
+        # Check bot movement status via bridge
+        movement_info = await _bridge_manager.execute_command("pathfinder.isMoving")
+        
+        result = {
+            'status': 'success',
+            'is_moving': movement_info.get('isMoving', False),
+            'has_goal': movement_info.get('goal') is not None
+        }
+        
+        # Add goal information if available
+        if movement_info.get('goal'):
+            goal = movement_info['goal']
+            result['goal'] = goal
+            
+        # Add session state information if available
+        if tool_context and hasattr(tool_context, 'state'):
+            movement_progress = tool_context.state.get('temp:movement_in_progress')
+            if movement_progress:
+                result['session_movement'] = movement_progress
+                result['movement_duration'] = __import__('time').time() - movement_progress['start_time']
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting movement status: {e}")
         return {
             'status': 'error',
             'error': str(e)
@@ -352,6 +484,7 @@ def create_mineflayer_tools(bridge_manager) -> List:
         dig_block,
         place_block,
         get_position,
+        get_movement_status,
         find_blocks,
         get_nearby_players,
         get_inventory,

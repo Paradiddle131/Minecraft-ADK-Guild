@@ -669,6 +669,22 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 55 });
     }
+    
+    /**
+     * Emit movement progress event
+     * @param {object} progressData - Movement progress data
+     */
+    emitMovementProgressEvent(progressData) {
+        this.emitToPython('movement_progress', {
+            target: progressData.target,
+            current_position: progressData.current_position,
+            distance_remaining: progressData.distance_remaining,
+            path_status: progressData.path_status,
+            remaining_moves: progressData.remaining_moves,
+            elapsed_time: progressData.elapsed_time,
+            time: Date.now()
+        }, { priority: 20 });
+    }
 }
 
 module.exports = { MinecraftEventEmitter };

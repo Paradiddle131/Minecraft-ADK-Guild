@@ -364,9 +364,9 @@ class BridgeManager:
         logger.info("Bridge closed")
 
     # Convenience methods for common operations
-    async def move_to(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Move bot to specific coordinates (non-blocking)"""
-        return await self.execute_command("pathfinder.goto", x=x, y=y, z=z)
+    async def move_to(self, x: int, y: int, z: int, timeout: int = 30000) -> Dict[str, Any]:
+        """Move bot to specific coordinates with timeout protection"""
+        return await self.execute_command("pathfinder.goto", x=x, y=y, z=z, timeout=timeout)
 
     async def dig_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
         """Dig a block at specific coordinates"""
