@@ -254,10 +254,8 @@ class MinecraftBot {
         this.bot.on('consume', () => {
             const heldItem = this.bot.heldItem;
             if (heldItem && heldItem.name) {
-                // Estimate food points and saturation (these might not be directly available)
-                const foodPoints = this.getFoodPoints(heldItem.name);
-                const saturation = this.getSaturation(heldItem.name);
-                this.eventEmitter.emitItemConsumeEvent(heldItem, foodPoints, saturation);
+                // Food data now handled by Python MinecraftDataService
+                this.eventEmitter.emitItemConsumeEvent(heldItem, 0, 0);
             }
         });
 
@@ -663,25 +661,15 @@ class MinecraftBot {
                         };
                     }
                     
-                    // Check if we need a crafting table
-                    const needsCraftingTable = this.needsCraftingTable(normalizedName);
+                    // Check if we need a crafting table - assume any recipe not craftable in 2x2 needs table
+                    // Python MinecraftDataService now determines this
                     let craftingTable = null;
                     
-                    if (needsCraftingTable) {
-                        // Find nearby crafting table
-                        craftingTable = this.bot.findBlock({
-                            matching: this.bot.registry.blocksByName.crafting_table.id,
-                            maxDistance: 4
-                        });
-                        
-                        if (!craftingTable) {
-                            return {
-                                success: false,
-                                error: 'No crafting table nearby',
-                                missing_materials: { 'crafting_table': 1 }
-                            };
-                        }
-                    }
+                    // Try to find a crafting table nearby - let Python decide if needed
+                    craftingTable = this.bot.findBlock({
+                        matching: this.bot.registry.blocksByName.crafting_table.id,
+                        maxDistance: 4
+                    });
                     
                     // Get recipes for this item
                     const recipes = this.bot.recipesFor(item.id, null, 1, craftingTable);
@@ -765,46 +753,7 @@ class MinecraftBot {
         return faces[face] || faces.top;
     }
 
-    getFoodPoints(itemName) {
-        // Basic food points mapping - could be expanded with a proper food database
-        const foodValues = {
-            'apple': 4,
-            'bread': 5,
-            'cooked_beef': 8,
-            'cooked_chicken': 6,
-            'cooked_porkchop': 8,
-            'golden_apple': 4,
-            'cookie': 2,
-            'cake': 14
-        };
-        return foodValues[itemName] || 0;
-    }
-
-    getSaturation(itemName) {
-        // Basic saturation mapping
-        const saturationValues = {
-            'apple': 2.4,
-            'bread': 6.0,
-            'cooked_beef': 12.8,
-            'cooked_chicken': 7.2,
-            'cooked_porkchop': 12.8,
-            'golden_apple': 9.6,
-            'cookie': 0.4,
-            'cake': 0.4
-        };
-        return saturationValues[itemName] || 0;
-    }
-
-    needsCraftingTable(itemName) {
-        // Items that can be crafted in 2x2 inventory grid
-        const inventoryCraftable = [
-            'stick', 'planks', 'oak_planks', 'birch_planks', 'spruce_planks',
-            'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 
-            'cherry_planks', 'crafting_table'
-        ];
-        
-        return !inventoryCraftable.includes(itemName);
-    }
+    // Data lookup methods removed - now handled by Python MinecraftDataService
 
     async checkMissingMaterials(recipe, count = 1) {
         const missing = {};

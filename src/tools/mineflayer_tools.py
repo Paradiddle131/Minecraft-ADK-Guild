@@ -11,11 +11,17 @@ logger = get_logger(__name__)
 
 # Global bridge reference for tool functions
 _bridge_manager = None
+_mc_data_service = None
 
 def _set_bridge_manager(bridge):
     """Set the global bridge manager for tool functions"""
     global _bridge_manager
     _bridge_manager = bridge
+
+def _set_minecraft_data_service(mc_data):
+    """Set the global minecraft data service for tool functions"""
+    global _mc_data_service
+    _mc_data_service = mc_data
 
 
 async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
@@ -640,17 +646,22 @@ async def send_chat(message: str, tool_context: Optional[ToolContext] = None) ->
         return {"status": "error", "error": str(e)}
 
 
-def create_mineflayer_tools(bridge_manager) -> List:
+def create_mineflayer_tools(bridge_manager, mc_data_service=None) -> List:
     """Create all Mineflayer tools for ADK agents.
 
     Args:
         bridge_manager: BridgeManager instance
+        mc_data_service: MinecraftDataService instance (optional)
 
     Returns:
         List of tool functions (ADK will automatically wrap them)
     """
     # Set the global bridge manager
     _set_bridge_manager(bridge_manager)
+    
+    # Set the minecraft data service if provided
+    if mc_data_service:
+        _set_minecraft_data_service(mc_data_service)
 
     # Return list of tool functions - ADK automatically creates FunctionTool objects
     return [

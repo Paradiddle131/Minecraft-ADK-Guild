@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from ..bridge.bridge_manager import BridgeManager
 from ..config import AgentConfig, get_config, setup_google_ai_credentials
 from ..logging_config import get_logger
+from ..minecraft_data_service import MinecraftDataService
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,11 @@ class BaseMinecraftAgent(ABC):
         self.bridge = bridge_manager
         self.config = config or get_config()
         self.ai_credentials = None
+        
+        # Initialize MinecraftDataService
+        minecraft_version = getattr(self.config, 'minecraft_version', '1.21.1')
+        self.mc_data = MinecraftDataService(minecraft_version)
+        logger.info(f"{self.name}: Initialized MinecraftDataService for version {minecraft_version}")
         
         # Setup Google AI credentials if not already configured
         try:

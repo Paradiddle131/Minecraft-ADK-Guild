@@ -13,17 +13,18 @@ from ..logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def create_gatherer_tools(bridge_manager) -> List[Any]:
+def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
     """Create enhanced tools for GathererAgent with state management
     
     Args:
         bridge_manager: BridgeManager instance for Minecraft interaction
+        mc_data_service: MinecraftDataService instance (optional)
         
     Returns:
         List of tools enhanced for gathering operations
     """
     # Get base tools
-    base_tools = create_mineflayer_tools(bridge_manager)
+    base_tools = create_mineflayer_tools(bridge_manager, mc_data_service)
     
     # Create tool name mapping for easy lookup
     tool_map = {tool.__name__: tool for tool in base_tools}
@@ -143,17 +144,18 @@ def create_gatherer_tools(bridge_manager) -> List[Any]:
     return enhanced_tools
 
 
-def create_crafter_tools(bridge_manager) -> List[Any]:
+def create_crafter_tools(bridge_manager, mc_data_service=None) -> List[Any]:
     """Create enhanced tools for CrafterAgent with state management
     
     Args:
         bridge_manager: BridgeManager instance for Minecraft interaction
+        mc_data_service: MinecraftDataService instance (optional)
         
     Returns:
         List of tools enhanced for crafting operations
     """
     # Get base tools
-    base_tools = create_mineflayer_tools(bridge_manager)
+    base_tools = create_mineflayer_tools(bridge_manager, mc_data_service)
     
     # Create tool name mapping
     tool_map = {tool.__name__: tool for tool in base_tools}

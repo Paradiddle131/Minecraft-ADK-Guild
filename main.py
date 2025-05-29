@@ -45,15 +45,11 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     # Create session service
     session_service = InMemorySessionService()
     
-    # Create enhanced tools for sub-agents
-    gatherer_tools = create_gatherer_tools(bridge_manager)
-    crafter_tools = create_crafter_tools(bridge_manager)
-    
-    # Create sub-agents with bridge integration
+    # Create sub-agents with bridge integration first (they will create mc_data_service)
     gatherer = GathererAgent(
         name="GathererAgent",
         model=config.default_model,
-        tools=gatherer_tools,
+        tools=[],  # Tools will be set after agent creation
         session_service=session_service,
         bridge_manager=bridge_manager,
         ai_credentials=ai_credentials,
@@ -63,12 +59,20 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     crafter = CrafterAgent(
         name="CrafterAgent", 
         model=config.default_model,
-        tools=crafter_tools,
+        tools=[],  # Tools will be set after agent creation
         session_service=session_service,
         bridge_manager=bridge_manager,
         ai_credentials=ai_credentials,
         config=config
     )
+    
+    # Now create enhanced tools with minecraft data service
+    gatherer_tools = create_gatherer_tools(bridge_manager, gatherer.mc_data)
+    crafter_tools = create_crafter_tools(bridge_manager, crafter.mc_data)
+    
+    # Update agents with tools
+    gatherer.tools = gatherer_tools
+    crafter.tools = crafter_tools
     
     # Create coordinator with sub-agents
     coordinator = CoordinatorAgent(
