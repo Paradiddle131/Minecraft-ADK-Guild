@@ -10,6 +10,7 @@ from ..bridge.bridge_manager import BridgeManager
 from ..config import AgentConfig, get_config, setup_google_ai_credentials
 from ..logging_config import get_logger
 from ..minecraft_data_service import MinecraftDataService
+from ..minecraft_bot_controller import BotController
 
 logger = get_logger(__name__)
 
@@ -39,6 +40,11 @@ class BaseMinecraftAgent(ABC):
         minecraft_version = getattr(self.config, 'minecraft_version', '1.21.1')
         self.mc_data = MinecraftDataService(minecraft_version)
         logger.info(f"{self.name}: Initialized MinecraftDataService for version {minecraft_version}")
+        
+        # Initialize BotController if bridge is available
+        self.bot_controller = BotController(bridge_manager) if bridge_manager else None
+        if self.bot_controller:
+            logger.info(f"{self.name}: Initialized BotController")
         
         # Setup Google AI credentials if not already configured
         try:

@@ -602,6 +602,51 @@ class MinecraftBot {
                 return blocks.map(pos => ({ x: pos.x, y: pos.y, z: pos.z }));
             },
 
+            // Additional simplified action handlers for Python BotController
+            'js_lookAt': async ({ x, y, z }) => {
+                this.bot.lookAt(new Vec3(x, y, z));
+                return { looked_at: { x, y, z } };
+            },
+
+            'js_stopDigging': async () => {
+                this.bot.stopDigging();
+                return { stopped: true };
+            },
+
+            'js_activateItem': async () => {
+                this.bot.activateItem();
+                return { activated: true };
+            },
+
+            'js_deactivateItem': async () => {
+                this.bot.deactivateItem();
+                return { deactivated: true };
+            },
+
+            'js_useOnBlock': async ({ x, y, z }) => {
+                const block = this.bot.blockAt(new Vec3(x, y, z));
+                if (!block) throw new Error('No block at position');
+                
+                await this.bot.activateBlock(block);
+                return { used_on: { x, y, z } };
+            },
+
+            'js_attackEntity': async ({ entity_id }) => {
+                const entity = this.bot.entities[entity_id];
+                if (!entity) throw new Error(`Entity ${entity_id} not found`);
+                
+                this.bot.attack(entity);
+                return { attacked: entity_id };
+            },
+
+            'js_dropItem': async ({ item_name, count = null }) => {
+                const item = this.bot.inventory.items().find(i => i.name === item_name);
+                if (!item) throw new Error(`Item ${item_name} not found in inventory`);
+                
+                await this.bot.tossStack(item, count);
+                return { dropped: item_name, count: count || item.count };
+            },
+
             // Crafting
             'craft': async ({ recipe: itemName, count = 1 }) => {
                 try {
