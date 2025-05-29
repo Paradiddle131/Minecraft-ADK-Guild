@@ -83,14 +83,28 @@ MINECRAFT_AGENT_GOOGLE_AI_API_KEY=your_key_here
 MINECRAFT_AGENT_MINECRAFT_HOST=localhost
 MINECRAFT_AGENT_MINECRAFT_PORT=25565
 MINECRAFT_AGENT_BOT_USERNAME=MinecraftAgent
+MINECRAFT_AGENT_LOG_LEVEL=INFO
 ```
 
-## 📖 Documentation
+### Logging
 
-- [CLAUDE.md](CLAUDE.md) - AI assistant guidelines
-- [SETUP.md](SETUP.md) - Detailed setup instructions
-- [QUICKSTART.md](QUICKSTART.md) - Getting started guide
+The system uses `structlog` for structured logging with both console and file output:
 
-## 🤝 Contributing
+- **Console**: Pretty-printed, colored output for development
+- **File**: JSON-formatted logs in `logs/` directory for parsing and analysis
+- **Log files**: Auto-generated with timestamp (e.g., `minecraft_agent_20240327_143022.log`)
+- **Log level**: Controlled via `MINECRAFT_AGENT_LOG_LEVEL` environment variable
 
-This project prioritizes simplicity and clean architecture. Please ensure any contributions maintain these principles.
+Example log output:
+```json
+{
+  "event": "User action completed",
+  "timestamp": "2024-03-27T14:30:22.123456",
+  "level": "info",
+  "logger": "src.agents.gatherer_agent",
+  "user_id": "player123",
+  "action": "gather_wood",
+  "items_collected": 5,
+  "duration_seconds": 45.3
+}
+```

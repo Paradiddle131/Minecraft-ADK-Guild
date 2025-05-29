@@ -13,7 +13,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 if TYPE_CHECKING:
     from ..config import AgentConfig
 
-logger = structlog.get_logger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -99,7 +101,6 @@ class BridgeManager:
                 'username': bot_username,
                 'auth': 'offline',
                 'version': minecraft_version,
-                'enableEventClient': False,
                 'timeout': 60000
             }, timeout=90000)
 
@@ -116,7 +117,6 @@ class BridgeManager:
 
             # bot_result.bot is a MinecraftBot instance with executeCommand method
             self.bot = bot_result.bot
-            self.event_client = bot_result.eventClient
 
             logger.info("Waiting for bot to spawn in world...")
             self.is_spawned = await self._wait_for_spawn_with_timeout()
@@ -126,7 +126,7 @@ class BridgeManager:
             else:
                 logger.warning("Bot created but not spawned - server might not be running")
 
-            logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}, eventClient={self.event_client is not None}")
+            logger.info(f"Bot ready: bot={self.bot is not None}, spawned={self.is_spawned}")
 
             await self._setup_event_listeners()
 
@@ -248,11 +248,17 @@ class BridgeManager:
         await self.command_queue.put((command.priority, command))
 
         try:
+            # Store command for potential cleanup
+            self.pending_commands[command_id] = command
+            
             result = await asyncio.wait_for(future, timeout=self.config.command_timeout / 1000)
             return result
         except asyncio.TimeoutError:
             logger.error("Command timeout", method=method, args=kwargs)
             raise TimeoutError(f"Command {method} timed out")
+        finally:
+            # Clean up pending command
+            self.pending_commands.pop(command_id, None)
 
     async def _process_command_queue(self):
         """Process commands from the queue"""
@@ -289,9 +295,8 @@ class BridgeManager:
                 if command.callback:
                     command.callback({"error": str(e)})
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))
     async def _execute_single_command(self, command: Command) -> Any:
-        """Execute a single command with retry logic"""
+        """Execute a single command - retry handled at higher level for specific commands"""
         logger.debug("Executing command", method=command.method, args=command.args)
 
         # Route to the MinecraftBot's command handlers via direct property access
@@ -322,20 +327,54 @@ class BridgeManager:
                 raise RuntimeError("Bot inventory not available")
         
         else:
-            # For other commands, try direct property access
-            method_parts = command.method.split(".")
-            obj = self.bot
-
-            for part in method_parts:
-                obj = getattr(obj, part)
-
-            # Call the method
-            if asyncio.iscoroutinefunction(obj):
-                result = await obj(**command.args)
+            # For all other commands, use the bot's executeCommand method
+            # which routes to the JavaScript handlers
+            if hasattr(self.bot, 'executeCommand'):
+                # Special handling for long-running commands like pathfinder.goto
+                if command.method == 'pathfinder.goto':
+                    # Don't retry pathfinder commands - they handle their own timeout
+                    logger.info(f"Executing pathfinder.goto to {command.args}")
+                
+                # Calculate appropriate timeout for JSPyBridge call
+                # For pathfinder.goto, use the pathfinder timeout + 5 seconds buffer
+                js_timeout = 15000  # Default 15 seconds for most commands
+                if command.method == 'pathfinder.goto' and 'timeout' in command.args:
+                    # Add 5 second buffer to pathfinder timeout
+                    js_timeout = command.args['timeout'] + 5000
+                elif command.method == 'pathfinder.goto':
+                    # Default pathfinder timeout is 30s, so use 35s for JSPyBridge
+                    js_timeout = 35000
+                
+                js_result = self.bot.executeCommand({
+                    'method': command.method,
+                    'args': command.args,
+                    'id': command.id if hasattr(command, 'id') else 'cmd'
+                }, timeout=js_timeout)
+                
+                # Handle JavaScript proxy object
+                if js_result is None:
+                    raise RuntimeError(f"No result returned from command: {command.method}")
+                    
+                # Log the raw result for debugging
+                logger.debug(f"JS result type: {type(js_result)}, hasattr success: {hasattr(js_result, 'success') if js_result else 'N/A'}")
+                
+                if hasattr(js_result, 'success'):
+                    # Access proxy properties directly
+                    success = js_result.success
+                    if success:
+                        # Return the actual result data
+                        result = js_result.result
+                        logger.debug(f"Command {command.method} succeeded with result type: {type(result)}")
+                        return result
+                    else:
+                        error_msg = js_result.error if hasattr(js_result, 'error') else 'Command failed'
+                        raise RuntimeError(error_msg)
+                else:
+                    # Fallback for unexpected result format
+                    logger.warning(f"Unexpected result format from {command.method}: {type(js_result)}")
+                    return js_result
             else:
-                result = obj(**command.args)
-
-            return result
+                raise RuntimeError(f"Unknown command: {command.method}")
 
     async def close(self):
         """Close the bridge and cleanup resources"""
@@ -355,9 +394,18 @@ class BridgeManager:
         logger.info("Bridge closed")
 
     # Convenience methods for common operations
-    async def move_to(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Move bot to specific coordinates"""
-        return await self.execute_command("pathfinder.goto", x=x, y=y, z=z)
+    async def move_to(self, x: int, y: int, z: int, timeout: int = 30000) -> Dict[str, Any]:
+        """Move bot to specific coordinates with timeout protection"""
+        # Increase command timeout to match pathfinder timeout + buffer
+        original_timeout = self.config.command_timeout
+        self.config.command_timeout = timeout + 5000  # Add 5s buffer
+        
+        try:
+            result = await self.execute_command("pathfinder.goto", x=x, y=y, z=z, timeout=timeout)
+            return result
+        finally:
+            # Restore original timeout
+            self.config.command_timeout = original_timeout
 
     async def dig_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
         """Dig a block at specific coordinates"""

@@ -2,20 +2,18 @@
  * Main entry point for the Minecraft bot system
  */
 const { createBot } = require('./bot.js');
-const { EventClient, integrateEventClient } = require('./event_client.js');
 const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config();
 
-// Main function to start bot with optional event streaming
+// Main function to start bot
 async function startBot(options = {}) {
     const defaultOptions = {
         host: process.env.MC_SERVER_HOST || 'localhost',
         port: parseInt(process.env.MC_SERVER_PORT) || 25565,
         username: process.env.MC_BOT_USERNAME || 'MinecraftAgent',
-        auth: process.env.MC_BOT_AUTH || 'offline',
-        enableEventClient: false
+        auth: process.env.MC_BOT_AUTH || 'offline'
     };
 
     const botOptions = { ...defaultOptions, ...options };
@@ -25,49 +23,24 @@ async function startBot(options = {}) {
         // Create bot
         const bot = await createBot(botOptions);
 
-        let eventClient = null;
-
-        // Optionally create event client
-        if (botOptions.enableEventClient) {
-            try {
-                eventClient = new EventClient(
-                    parseInt(process.env.BRIDGE_PORT) || 8765
-                );
-
-                // Connect event client with retry
-                let connected = false;
-                let attempts = 0;
-                const maxAttempts = 3;
-                
-                while (!connected && attempts < maxAttempts) {
-                    try {
-                        await Promise.race([
-                            eventClient.connect(),
-                            new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Event client connection timeout')), 15000)
-                            )
-                        ]);
-                        connected = true;
-                    } catch (error) {
-                        attempts++;
-                        if (attempts < maxAttempts) {
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                        } else {
-                            throw error;
-                        }
-                    }
+        // Return bot interface for bridge
+        return {
+            bot: bot,
+            executeCommand: async (cmd) => {
+                try {
+                    const result = await bot.executeCommand(cmd);
+                    return result;
+                } catch (error) {
+                    console.error(`Command ${cmd.method} error:`, error);
+                    return {
+                        id: cmd.id,
+                        success: false,
+                        error: error.message || error.toString()
+                    };
                 }
-                
-
-                // Integrate bot with event client
-                integrateEventClient(bot, eventClient);
-            } catch (error) {
-                eventClient = null;
-            }
-        }
-
-        // Return both for external control
-        return { bot, eventClient };
+            },
+            quit: () => bot.quit()
+        };
 
     } catch (error) {
         console.error('Failed to start bot:', error);
@@ -77,8 +50,8 @@ async function startBot(options = {}) {
 
 // For direct Node.js execution
 if (require.main === module) {
-    // Run in standalone mode without event client
-    startBot({ enableEventClient: false }).catch(console.error);
+    // Run in standalone mode
+    startBot().catch(console.error);
 }
 
 module.exports = { startBot, createBot };

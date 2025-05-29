@@ -8,10 +8,11 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
-import structlog
 import websockets
 
-logger = structlog.get_logger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
