@@ -91,7 +91,7 @@ class BridgeManager:
                 minecraft_host = os.getenv('MINECRAFT_AGENT_MINECRAFT_HOST', 'localhost')
                 minecraft_port = int(os.getenv('MINECRAFT_AGENT_MINECRAFT_PORT', '25565'))
                 bot_username = os.getenv('MINECRAFT_AGENT_BOT_USERNAME', 'MinecraftAgent')
-                minecraft_version = os.getenv('MINECRAFT_AGENT_MINECRAFT_VERSION', '1.21')
+                minecraft_version = os.getenv('MINECRAFT_AGENT_MINECRAFT_VERSION', '1.21.1')
             
             logger.info(f"Starting bot with configuration: host={minecraft_host}, port={minecraft_port}, username={bot_username}, version={minecraft_version}")
             
