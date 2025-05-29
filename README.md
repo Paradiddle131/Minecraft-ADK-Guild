@@ -21,7 +21,6 @@ User → main.py → CoordinatorAgent → [GathererAgent, CrafterAgent]
 
 2. **Bridge Layer**
    - **BridgeManager**: Python → JavaScript command execution
-   - **EventStream**: JavaScript → Python event streaming
    - WebSocket communication on port 8765
 
 3. **Minecraft Layer (JavaScript)**
