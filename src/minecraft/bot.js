@@ -602,6 +602,146 @@ class MinecraftBot {
                 });
 
                 return blocks.map(pos => ({ x: pos.x, y: pos.y, z: pos.z }));
+            },
+
+            // Crafting
+            'craft': async ({ recipe: itemName, count = 1 }) => {
+                try {
+                    logger.info(`Attempting to craft ${count} ${itemName}`);
+                    
+                    // Handle common naming variations
+                    let normalizedName = itemName;
+                    
+                    // Handle plural/singular variations
+                    if (itemName === 'sticks') normalizedName = 'stick';
+                    
+                    // Handle generic planks request - try to craft from available logs
+                    if (itemName === 'planks') {
+                        // Find what type of log we have
+                        const logTypes = ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'acacia_log', 'jungle_log', 'mangrove_log', 'cherry_log'];
+                        const inventory = this.bot.inventory.items();
+                        
+                        for (const item of inventory) {
+                            if (logTypes.includes(item.name)) {
+                                // Determine the plank type based on log type
+                                normalizedName = item.name.replace('_log', '_planks');
+                                logger.info(`Converting generic 'planks' request to '${normalizedName}' based on available ${item.name}`);
+                                break;
+                            }
+                        }
+                        
+                        // If no logs found, check if we already have some planks
+                        if (normalizedName === 'planks') {
+                            const plankTypes = ['oak_planks', 'birch_planks', 'spruce_planks', 'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 'cherry_planks'];
+                            for (const item of inventory) {
+                                if (plankTypes.includes(item.name)) {
+                                    normalizedName = item.name; // Use existing plank type
+                                    logger.info(`Using existing '${normalizedName}' for generic 'planks' request`);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // If still no match, default to oak_planks
+                        if (normalizedName === 'planks') {
+                            normalizedName = 'oak_planks';
+                            logger.info(`Defaulting generic 'planks' request to 'oak_planks'`);
+                        }
+                    }
+                    
+                    // Handle other common variations
+                    if (itemName === 'sticks' || itemName === 'stick') {
+                        normalizedName = 'stick';
+                    }
+                    
+                    // Get the item from registry
+                    const item = this.bot.registry.itemsByName[normalizedName];
+                    if (!item) {
+                        return {
+                            success: false,
+                            error: `Unknown item: ${itemName}`
+                        };
+                    }
+                    
+                    // Check if we need a crafting table
+                    const needsCraftingTable = this.needsCraftingTable(normalizedName);
+                    let craftingTable = null;
+                    
+                    if (needsCraftingTable) {
+                        // Find nearby crafting table
+                        craftingTable = this.bot.findBlock({
+                            matching: this.bot.registry.blocksByName.crafting_table.id,
+                            maxDistance: 4
+                        });
+                        
+                        if (!craftingTable) {
+                            return {
+                                success: false,
+                                error: 'No crafting table nearby',
+                                missing_materials: { 'crafting_table': 1 }
+                            };
+                        }
+                    }
+                    
+                    // Get recipes for this item
+                    const recipes = this.bot.recipesFor(item.id, null, 1, craftingTable);
+                    
+                    if (!recipes || recipes.length === 0) {
+                        return {
+                            success: false,
+                            error: `No recipe found for ${itemName}`
+                        };
+                    }
+                    
+                    // Use the first available recipe
+                    const recipe = recipes[0];
+                    
+                    // Check if we have the required materials
+                    const missingMaterials = await this.checkMissingMaterials(recipe, count);
+                    
+                    if (Object.keys(missingMaterials).length > 0) {
+                        return {
+                            success: false,
+                            error: `Cannot craft ${itemName}: missing materials`,
+                            missing_materials: missingMaterials
+                        };
+                    }
+                    
+                    // Actually craft the item
+                    try {
+                        await this.bot.craft(recipe, count, craftingTable);
+                        logger.info(`Successfully crafted ${count} ${itemName}`);
+                        
+                        return {
+                            success: true,
+                            crafted: count,
+                            recipe: itemName,
+                            message: `Crafted ${count} ${itemName}`
+                        };
+                    } catch (craftError) {
+                        logger.error(`Crafting failed for ${itemName}:`, craftError);
+                        
+                        // Try to provide more specific error info
+                        if (craftError.message.includes('materials')) {
+                            // Re-check materials for better error reporting
+                            const missing = await this.checkMissingMaterials(recipe, count);
+                            return {
+                                success: false,
+                                error: `Crafting failed: ${craftError.message}`,
+                                missing_materials: missing
+                            };
+                        }
+                        
+                        throw craftError;
+                    }
+
+                } catch (error) {
+                    logger.error('Crafting error:', error);
+                    return {
+                        success: false,
+                        error: error.message || 'Crafting failed'
+                    };
+                }
             }
         };
 
@@ -653,6 +793,66 @@ class MinecraftBot {
             'cake': 0.4
         };
         return saturationValues[itemName] || 0;
+    }
+
+    needsCraftingTable(itemName) {
+        // Items that can be crafted in 2x2 inventory grid
+        const inventoryCraftable = [
+            'stick', 'planks', 'oak_planks', 'birch_planks', 'spruce_planks',
+            'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 
+            'cherry_planks', 'crafting_table'
+        ];
+        
+        return !inventoryCraftable.includes(itemName);
+    }
+
+    async checkMissingMaterials(recipe, count = 1) {
+        const missing = {};
+        const inventory = this.bot.inventory.items();
+        
+        // Count required materials
+        const required = {};
+        
+        // Handle both shaped and shapeless recipes
+        const ingredients = recipe.inShape || recipe.ingredients || [];
+        
+        for (const row of ingredients) {
+            if (Array.isArray(row)) {
+                // Shaped recipe with rows
+                for (const slot of row) {
+                    if (slot && slot.id !== -1) {
+                        const item = this.bot.registry.items[slot.id];
+                        if (item) {
+                            const totalNeeded = (slot.count || 1) * count;
+                            required[item.name] = (required[item.name] || 0) + totalNeeded;
+                        }
+                    }
+                }
+            } else if (row && row.id !== -1) {
+                // Shapeless recipe or single item
+                const item = this.bot.registry.items[row.id];
+                if (item) {
+                    const totalNeeded = (row.count || 1) * count;
+                    required[item.name] = (required[item.name] || 0) + totalNeeded;
+                }
+            }
+        }
+        
+        // Check what we have
+        const have = {};
+        for (const item of inventory) {
+            have[item.name] = (have[item.name] || 0) + item.count;
+        }
+        
+        // Calculate missing
+        for (const [itemName, needCount] of Object.entries(required)) {
+            const haveCount = have[itemName] || 0;
+            if (haveCount < needCount) {
+                missing[itemName] = needCount - haveCount;
+            }
+        }
+        
+        return missing;
     }
 
     // Python bridge interface methods
