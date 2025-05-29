@@ -374,11 +374,29 @@ async def find_blocks(
             "world.findBlocks", name=block_name, maxDistance=max_distance, count=count
         )
 
+        # Convert JSPyBridge Proxy object to Python list
+        if hasattr(blocks, '__len__'):
+            # Already a Python object with len()
+            block_list = list(blocks)
+        else:
+            # Proxy object - convert to list by iterating
+            block_list = []
+            try:
+                # Try to iterate over the proxy object
+                for block in blocks:
+                    block_list.append(block)
+            except TypeError:
+                # If it's not iterable, it might be a single object or empty
+                if blocks:
+                    block_list = [blocks]
+                else:
+                    block_list = []
+
         return {
             "status": "success",
             "block_type": block_name,
-            "count": len(blocks),
-            "positions": blocks,
+            "count": len(block_list),
+            "positions": block_list,
         }
 
     except Exception as e:

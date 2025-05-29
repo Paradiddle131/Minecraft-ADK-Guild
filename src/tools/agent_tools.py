@@ -42,13 +42,13 @@ def create_gatherer_tools(bridge_manager) -> List[Any]:
             
             # Update state with found blocks
             if tool_context and result.get("status") == "success":
-                blocks = result.get("blocks", [])
+                positions = result.get("positions", [])
                 tool_context.state[StateKeys.GATHER_TARGET] = {
                     "block_name": block_name,
-                    "found_count": len(blocks),
-                    "locations": blocks
+                    "found_count": len(positions),
+                    "locations": positions
                 }
-                logger.info(f"Found {len(blocks)} {block_name} blocks for gathering")
+                logger.info(f"Found {len(positions)} {block_name} blocks for gathering")
                 
             return result
             
