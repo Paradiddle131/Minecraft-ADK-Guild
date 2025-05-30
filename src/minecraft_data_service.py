@@ -2,13 +2,7 @@
 Minecraft Data Service - Centralized Python service for all Minecraft data lookups
 """
 import logging
-import sys
-import os
 from typing import Dict, List, Optional, Any
-
-# Add python-minecraft-data to path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(project_root, 'python-minecraft-data'))
 
 import minecraft_data
 
