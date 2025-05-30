@@ -33,7 +33,9 @@ class GathererAgent(BaseMinecraftAgent):
         session_service: Optional[InMemorySessionService] = None,
         bridge_manager: Optional[BridgeManager] = None,
         ai_credentials: Optional[Dict[str, Any]] = None,
-        config=None
+        config=None,
+        mc_data_service=None,
+        bot_controller=None
     ):
         """Initialize the gatherer agent
         
@@ -45,9 +47,11 @@ class GathererAgent(BaseMinecraftAgent):
             bridge_manager: Shared BridgeManager instance
             ai_credentials: Google AI credentials
             config: Agent configuration
+            mc_data_service: Optional shared MinecraftDataService instance
+            bot_controller: Optional shared BotController instance
         """
-        # Initialize base class
-        super().__init__(name, bridge_manager, config)
+        # Initialize base class with optional shared services
+        super().__init__(name, bridge_manager, config, mc_data_service, bot_controller)
         
         self.model = model or (config.default_model if config else "gemini-2.0-flash")
         self.tools = tools or []

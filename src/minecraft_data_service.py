@@ -12,20 +12,31 @@ logger = logging.getLogger(__name__)
 class MinecraftDataService:
     """Service for handling all Minecraft data lookups using python-minecraft-data"""
     
+    _instance = None
+    _version = None
+    
+    def __new__(cls, mc_version: str = "1.21.1"):
+        if cls._instance is None or cls._version != mc_version:
+            cls._instance = super().__new__(cls)
+            cls._version = mc_version
+        return cls._instance
+    
     def __init__(self, mc_version: str = "1.21.1"):
         """Initialize the MinecraftDataService with specified Minecraft version
         
         Args:
             mc_version: Minecraft version string (e.g., "1.21.1")
         """
-        try:
-            # Initialize minecraft_data as shown in example.py
-            self.mc_data = minecraft_data(mc_version)
-            self.version = mc_version
-            logger.info(f"Initialized MinecraftDataService for version {mc_version}")
-        except Exception as e:
-            logger.error(f"Failed to initialize minecraft-data for version {mc_version}: {e}")
-            raise
+        # Only initialize if not already initialized or version changed
+        if not hasattr(self, 'mc_data') or self.version != mc_version:
+            try:
+                # Initialize minecraft_data as shown in example.py
+                self.mc_data = minecraft_data(mc_version)
+                self.version = mc_version
+                logger.info(f"Initialized MinecraftDataService for version {mc_version}")
+            except Exception as e:
+                logger.error(f"Failed to initialize minecraft-data for version {mc_version}: {e}")
+                raise
     
     def get_block_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Get block data by name

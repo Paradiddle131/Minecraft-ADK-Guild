@@ -12,14 +12,25 @@ logger = logging.getLogger(__name__)
 class BotController:
     """Python controller for all Minecraft bot actions via BridgeManager"""
     
+    _instance = None
+    _bridge_manager = None
+    
+    def __new__(cls, bridge_manager_instance: BridgeManager):
+        if cls._instance is None or cls._bridge_manager is not bridge_manager_instance:
+            cls._instance = super().__new__(cls)
+            cls._bridge_manager = bridge_manager_instance
+        return cls._instance
+    
     def __init__(self, bridge_manager_instance: BridgeManager):
         """Initialize the BotController with a BridgeManager instance
         
         Args:
             bridge_manager_instance: An initialized BridgeManager instance
         """
-        self.bridge_manager_instance = bridge_manager_instance
-        logger.info("Initialized BotController")
+        # Only initialize if not already initialized or bridge manager changed
+        if not hasattr(self, 'bridge_manager_instance') or self.bridge_manager_instance is not bridge_manager_instance:
+            self.bridge_manager_instance = bridge_manager_instance
+            logger.info("Initialized BotController")
     
     async def chat(self, message: str) -> Dict[str, Any]:
         """Send a chat message
