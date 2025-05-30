@@ -125,8 +125,12 @@ async def initialize_session(session_service: InMemorySessionService):
             user_id="player", 
             session_id="interactive_session"
         )
-        logger.info("Retrieved existing session")
-    except:
+        if session is not None:
+            logger.info("Retrieved existing session")
+        else:
+            raise ValueError("get_session returned None")
+    except Exception as e:
+        logger.debug(f"Failed to get existing session: {e}")
         # Create new session if it doesn't exist
         session = await session_service.create_session(
             app_name="minecraft_multiagent",
@@ -137,7 +141,7 @@ async def initialize_session(session_service: InMemorySessionService):
         session.state["task.command_queue"] = []
         session.state["task.processing"] = False
         logger.info("Created new session with command queue")
-        
+    
     return session
 
 
