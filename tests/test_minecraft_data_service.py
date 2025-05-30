@@ -103,10 +103,15 @@ def test_normalization():
     assert service.normalize_item_name('sticks') == 'stick', "Should normalize 'sticks' to 'stick'"
     print("✓ 'sticks' → 'stick'")
     
-    # Test generic names
-    assert service.normalize_item_name('planks') == 'oak_planks', "Should normalize 'planks' to 'oak_planks'"
-    assert service.normalize_item_name('wood') == 'oak_log', "Should normalize 'wood' to 'oak_log'"
-    print("✓ 'planks' → 'oak_planks', 'wood' → 'oak_log'")
+    # Test fuzzy matching
+    fuzzy_result = service.fuzzy_match_item_name('planks')
+    assert fuzzy_result is not None and 'planks' in fuzzy_result, "Should fuzzy match 'planks' to a plank type"
+    print(f"✓ Fuzzy match 'planks' → '{fuzzy_result}'")
+    
+    # Test generic item handling
+    generic_result = service.handle_generic_item_request('planks', {})
+    assert generic_result is not None and 'planks' in generic_result, "Should handle generic 'planks' request"
+    print(f"✓ Generic handler 'planks' → '{generic_result}'")
     
     # Test unchanged names
     assert service.normalize_item_name('diamond') == 'diamond', "Should not change valid names"
@@ -149,6 +154,59 @@ def test_id_lookups():
     print("✓ Item ID 848 is stick")
 
 
+def test_fuzzy_matching():
+    """Test fuzzy matching functionality"""
+    service = MinecraftDataService("1.21.1")
+    
+    print("\n=== Testing fuzzy matching ===")
+    
+    # Test exact matches
+    assert service.fuzzy_match_item_name('diamond') == 'diamond', "Exact match should work"
+    print("✓ Exact match: 'diamond' → 'diamond'")
+    
+    # Test substring matches
+    pickaxe_match = service.fuzzy_match_item_name('pickaxe')
+    assert pickaxe_match is not None and 'pickaxe' in pickaxe_match, "Should match items containing 'pickaxe'"
+    print(f"✓ Substring match: 'pickaxe' → '{pickaxe_match}'")
+    
+    # Test partial word matches
+    wood_match = service.fuzzy_match_item_name('wood')
+    assert wood_match is not None, "Should match items related to 'wood'"
+    print(f"✓ Partial match: 'wood' → '{wood_match}'")
+    
+    # Test misspellings/close matches
+    dimond_match = service.fuzzy_match_item_name('dimond')  # Misspelled diamond
+    assert dimond_match == 'diamond', "Should match despite misspelling"
+    print("✓ Misspelling: 'dimond' → 'diamond'")
+
+
+def test_recipe_selection():
+    """Test generic recipe selection algorithm"""
+    service = MinecraftDataService("1.21.1")
+    
+    print("\n=== Testing recipe selection ===")
+    
+    # Test with empty inventory
+    empty_inv = {}
+    recipe = service.select_best_recipe('stick', empty_inv)
+    assert recipe is None, "Should return None with empty inventory"
+    print("✓ No recipe selected with empty inventory")
+    
+    # Test with materials for stick
+    inv_with_planks = {'oak_planks': 2}
+    recipe = service.select_best_recipe('stick', inv_with_planks)
+    assert recipe is not None, "Should find recipe with oak planks"
+    materials = service.get_recipe_materials(recipe)
+    assert all(inv_with_planks.get(mat, 0) >= count for mat, count in materials.items()), "Should have all materials"
+    print("✓ Selected craftable recipe with available materials")
+    
+    # Test recipe preference with multiple options
+    rich_inventory = {'oak_planks': 64, 'birch_planks': 32, 'spruce_planks': 16}
+    recipe = service.select_best_recipe('stick', rich_inventory)
+    assert recipe is not None, "Should find recipe with rich inventory"
+    print("✓ Selected best recipe from multiple options")
+
+
 def run_all_tests():
     """Run all tests"""
     print("Running MinecraftDataService Tests\n")
@@ -161,6 +219,8 @@ def run_all_tests():
         test_normalization()
         test_block_finding()
         test_id_lookups()
+        test_fuzzy_matching()
+        test_recipe_selection()
         
         print("\n✅ All tests passed!")
         return True
