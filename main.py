@@ -109,25 +109,107 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     return coordinator, runner, session_service
 
 
-async def run_agent_system(command: str, runner: Runner, session_service: InMemorySessionService):
-    """Execute a command through the agent system
+async def initialize_session(session_service: InMemorySessionService):
+    """Initialize or get the persistent session
     
     Args:
-        command: User command to process
-        runner: ADK Runner instance
         session_service: Session service for state management
         
     Returns:
-        Agent response string
+        Session object
     """
-    # Create or get session
-    session = await session_service.create_session(
-        app_name="minecraft_multiagent",
-        user_id="player"
+    # Try to get existing session first
+    try:
+        session = await session_service.get_session(
+            app_name="minecraft_multiagent",
+            user_id="player", 
+            session_id="interactive_session"
+        )
+        logger.info("Retrieved existing session")
+    except:
+        # Create new session if it doesn't exist
+        session = await session_service.create_session(
+            app_name="minecraft_multiagent",
+            user_id="player",
+            session_id="interactive_session"
+        )
+        # Initialize command queue
+        session.state["task.command_queue"] = []
+        session.state["task.processing"] = False
+        logger.info("Created new session with command queue")
+        
+    return session
+
+
+async def add_command_to_queue(command: str, session_service: InMemorySessionService, session):
+    """Add a command to the processing queue
+    
+    Args:
+        command: User command to add to queue
+        session_service: Session service for state management
+        session: Current session object
+    """
+    # Get current queue
+    command_queue = session.state.get("task.command_queue", [])
+    command_queue.append(command)
+    
+    # Update state with new queue
+    from google.adk.events import Event, EventActions
+    
+    state_changes = {
+        "task.command_queue": command_queue
+    }
+    
+    event = Event(
+        author="system",
+        actions=EventActions(state_delta=state_changes)
     )
     
-    # Store user request in state for agents to access
-    session.state["user_request"] = command
+    await session_service.append_event(session, event)
+    logger.info(f"Added command to queue: {command}. Queue size: {len(command_queue)}")
+
+
+async def process_next_command(runner: Runner, session_service: InMemorySessionService, session):
+    """Process the next command from the queue
+    
+    Args:
+        runner: ADK Runner instance
+        session_service: Session service for state management
+        session: Current session object
+        
+    Returns:
+        Agent response string or None if queue is empty
+    """
+    # Check if already processing
+    if session.state.get("task.processing", False):
+        logger.info("Already processing a command")
+        return None
+        
+    # Get command queue
+    command_queue = session.state.get("task.command_queue", [])
+    if not command_queue:
+        return None
+        
+    # Get next command
+    command = command_queue.pop(0)
+    
+    # Update state to mark as processing
+    from google.adk.events import Event, EventActions
+    
+    state_changes = {
+        "task.command_queue": command_queue,
+        "task.processing": True,
+        "task.current_command": command,
+        "user_request": command  # For backward compatibility
+    }
+    
+    event = Event(
+        author="system",
+        actions=EventActions(state_delta=state_changes)
+    )
+    
+    await session_service.append_event(session, event)
+    logger.info(f"Processing command: {command}")
     
     # Create user message
     user_content = types.Content(
@@ -137,7 +219,6 @@ async def run_agent_system(command: str, runner: Runner, session_service: InMemo
     
     # Execute through runner
     final_response = ""
-    logger.info(f"Processing command: {command}")
     
     async for event in runner.run_async(
         user_id="player",
@@ -148,6 +229,19 @@ async def run_agent_system(command: str, runner: Runner, session_service: InMemo
             final_response = ''.join(
                 part.text or '' for part in event.content.parts
             )
+    
+    # Mark processing as complete
+    state_changes = {
+        "task.processing": False,
+        "task.current_command": None
+    }
+    
+    complete_event = Event(
+        author="system",
+        actions=EventActions(state_delta=state_changes)
+    )
+    
+    await session_service.append_event(session, complete_event)
     
     # Log task results from state
     gather_result = session.state.get("task.gather.result")
@@ -209,35 +303,104 @@ async def main():
         await bridge.initialize()
         
         # Setup agents
-        coordinator, runner, session_service = await setup_agents(bridge, config)
+        _, runner, session_service = await setup_agents(bridge, config)
+        
+        # Initialize persistent session
+        session = await initialize_session(session_service)
         
         if args.interactive:
-            # Interactive mode
-            logger.info("Starting interactive mode. Type 'exit' to quit.")
+            # Interactive mode with persistent session
+            logger.info("Starting interactive mode with persistent session. Type 'exit' to quit.")
+            logger.info("Commands are queued and processed sequentially.")
             
-            while True:
-                try:
-                    command = input("\nMinecraft Agent> ").strip()
-                    
-                    if command.lower() in ['exit', 'quit', 'q']:
+            # Start background task to process command queue
+            import asyncio
+            
+            async def process_queue_loop():
+                """Background task to process commands from queue"""
+                while True:
+                    try:
+                        # Get fresh session state
+                        session_fresh = await session_service.get_session(
+                            app_name="minecraft_multiagent",
+                            user_id="player",
+                            session_id="interactive_session"
+                        )
+                        
+                        # Process next command if any
+                        response = await process_next_command(runner, session_service, session_fresh)
+                        if response:
+                            logger.info(f"Agent response: {response}")
+                            print(f"\n{response}\n")
+                            
+                        # Check remaining queue size
+                        queue_size = len(session_fresh.state.get("task.command_queue", []))
+                        if queue_size > 0:
+                            logger.info(f"Remaining commands in queue: {queue_size}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error in queue processor: {e}")
+                        
+                    # Small delay between queue checks
+                    await asyncio.sleep(0.5)
+            
+            # Start queue processor
+            queue_task = asyncio.create_task(process_queue_loop())
+            
+            try:
+                while True:
+                    try:
+                        # Get user input
+                        command = input("\nMinecraft Agent> ").strip()
+                        
+                        if command.lower() in ['exit', 'quit', 'q']:
+                            break
+                            
+                        if not command:
+                            continue
+                            
+                        if command.lower() == 'status':
+                            # Show queue status
+                            session_fresh = await session_service.get_session(
+                                app_name="minecraft_multiagent",
+                                user_id="player",
+                                session_id="interactive_session"
+                            )
+                            queue = session_fresh.state.get("task.command_queue", [])
+                            processing = session_fresh.state.get("task.processing", False)
+                            current = session_fresh.state.get("task.current_command")
+                            
+                            print(f"\nQueue Status:")
+                            print(f"  Processing: {processing}")
+                            print(f"  Current command: {current}")
+                            print(f"  Queued commands: {len(queue)}")
+                            for i, cmd in enumerate(queue):
+                                print(f"    {i+1}. {cmd}")
+                            continue
+                            
+                        # Add command to queue
+                        await add_command_to_queue(command, session_service, session)
+                        print(f"Command added to queue: {command}")
+                        
+                    except KeyboardInterrupt:
+                        logger.info("Exiting interactive mode...")
                         break
-                        
-                    if not command:
-                        continue
-                        
-                    response = await run_agent_system(command, runner, session_service)
-                    logger.info(f"Agent response: {response}")
-                    
-                except KeyboardInterrupt:
-                    logger.info("Exiting interactive mode...")
-                    break
-                except Exception as e:
-                    logger.error(f"Error processing command: {e}")
+                    except Exception as e:
+                        logger.error(f"Error handling input: {e}")
+            finally:
+                # Cancel queue processor
+                queue_task.cancel()
+                try:
+                    await queue_task
+                except asyncio.CancelledError:
+                    pass
                     
         elif args.command:
-            # Single command mode
-            response = await run_agent_system(args.command, runner, session_service)
-            logger.info(f"Agent response: {response}")
+            # Single command mode with persistent session
+            await add_command_to_queue(args.command, session_service, session)
+            response = await process_next_command(runner, session_service, session)
+            if response:
+                logger.info(f"Agent response: {response}")
         else:
             # No command provided
             logger.info("Please provide a command or use --interactive mode")
