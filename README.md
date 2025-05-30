@@ -30,14 +30,14 @@ User → main.py → CoordinatorAgent → [GathererAgent, CrafterAgent]
 
 ### Interactive Agent Loop Architecture
 
-![Interactive Agent Loop](docs/interactive-agent-loop-architecture.png)
+![Interactive Agent Loop](docs/interactive-agent-loop-simple.png)
 
 The interactive mode implements a persistent session with command queuing:
-- **User Interface**: Accepts commands and adds them to a queue
-- **Persistent Session**: Maintains state across all commands
-- **Background Processing**: Continuously processes queued commands
-- **ADK Runtime**: Executes agents with proper event handling
-- **Results Flow**: Updates state and displays responses to user
+- **User Input**: Type commands naturally, they're automatically queued
+- **Background Processing**: Continuously checks and processes commands
+- **Persistent Session**: Maintains all state (inventory, position, results) between commands
+- **Agent Execution**: Coordinator delegates to specialized sub-agents
+- **Results Display**: Responses shown as commands complete
 
 ## 🚀 Quick Start
 

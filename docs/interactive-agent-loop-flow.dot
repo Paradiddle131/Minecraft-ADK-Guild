@@ -1,0 +1,107 @@
+digraph InteractiveAgentLoopFlow {
+    rankdir=LR;
+    graph [fontname="Arial", fontsize=14, compound=true, nodesep=0.8, ranksep=1.5];
+    node [shape=box, style="rounded,filled", fontname="Arial", fontsize=11, width=2];
+    edge [fontname="Arial", fontsize=10];
+
+    // Define node styles
+    node [fillcolor="#e8f4f8"];
+    
+    // Step 1: User Input
+    subgraph cluster_input {
+        label="1. User Input";
+        style=filled;
+        fillcolor="#f0f8ff";
+        
+        user [label="User types\ncommand", shape=ellipse, fillcolor="#b3d9ff"];
+        check_status [label="Is it\n'status'?", shape=diamond, fillcolor="#cce5ff"];
+    }
+    
+    // Step 2: Queue Management
+    subgraph cluster_queue {
+        label="2. Queue Management";
+        style=filled;
+        fillcolor="#ffe5e5";
+        
+        add_queue [label="Add to\nCommand Queue\n\n📝 task.command_queue", fillcolor="#ffcccc"];
+        show_status [label="Display\nQueue Status", fillcolor="#ffcccc"];
+    }
+    
+    // Step 3: Background Processing
+    subgraph cluster_process {
+        label="3. Background Processor (runs continuously)";
+        style=filled;
+        fillcolor="#e5ffe5";
+        
+        check_queue [label="Check Queue\n(every 0.5s)", shape=hexagon, fillcolor="#ccffcc"];
+        get_command [label="Get Next\nCommand", fillcolor="#ccffcc"];
+        set_processing [label="Mark as\nProcessing\n\n🔄 task.processing=true", fillcolor="#ccffcc"];
+    }
+    
+    // Step 4: Agent Execution
+    subgraph cluster_agents {
+        label="4. Agent Execution";
+        style=filled;
+        fillcolor="#f5f0ff";
+        
+        coordinator [label="Coordinator\nAgent", fillcolor="#e6d9ff"];
+        subagents [label="GathererAgent\nor\nCrafterAgent", fillcolor="#d9ccff"];
+        tools [label="Execute\nMinecraft\nActions", fillcolor="#ccbfff"];
+    }
+    
+    // Step 5: State Updates
+    subgraph cluster_state {
+        label="5. State Updates";
+        style=filled;
+        fillcolor="#ffffcc";
+        
+        update_state [label="Update State\n\n📊 minecraft.*\n📊 task.*.result", fillcolor="#ffff99"];
+        clear_processing [label="Clear Processing\n\n✅ task.processing=false", fillcolor="#ffff99"];
+    }
+    
+    // Step 6: Response
+    subgraph cluster_response {
+        label="6. Response";
+        style=filled;
+        fillcolor="#e5f5ff";
+        
+        display [label="Display\nto User", shape=ellipse, fillcolor="#ccebff"];
+    }
+    
+    // Main flow connections
+    user -> check_status;
+    check_status -> add_queue [label="no"];
+    check_status -> show_status [label="yes"];
+    
+    add_queue -> check_queue [style=dotted, label="triggers"];
+    
+    check_queue -> get_command [label="has commands"];
+    check_queue -> check_queue [label="empty\n(wait)", style=dotted];
+    
+    get_command -> set_processing;
+    set_processing -> coordinator;
+    
+    coordinator -> subagents [label="delegates"];
+    subagents -> tools;
+    
+    tools -> update_state;
+    update_state -> clear_processing;
+    
+    clear_processing -> display;
+    display -> check_queue [style=dotted, label="loop back"];
+    
+    show_status -> user [style=dashed];
+    
+    // Persistent Session box
+    session [label="Persistent Session\n'interactive_session'\n\nMaintains:\n• Command queue\n• Processing state\n• Inventory data\n• Task results", 
+             shape=note, 
+             style="filled", 
+             fillcolor="#f0fff0",
+             fontsize=10,
+             width=2.5];
+    
+    // Position session centrally
+    {rank=same; add_queue; session;}
+    add_queue -> session [dir=none, style=dotted];
+    update_state -> session [dir=none, style=dotted];
+}
