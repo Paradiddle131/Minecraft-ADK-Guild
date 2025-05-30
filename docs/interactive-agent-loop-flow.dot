@@ -1,8 +1,8 @@
 digraph InteractiveAgentLoopFlow {
     rankdir=LR;
-    graph [fontname="Arial", fontsize=14, compound=true, nodesep=0.8, ranksep=1.5];
+    graph [fontname="Arial", fontsize=14, compound=true, nodesep=0.8, ranksep=1.5, bgcolor="white"];
     node [shape=box, style="rounded,filled", fontname="Arial", fontsize=11, width=2];
-    edge [fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=10, arrowsize=0.8];
 
     // Define node styles
     node [fillcolor="#e8f4f8"];
@@ -32,6 +32,7 @@ digraph InteractiveAgentLoopFlow {
         label="3. Background Processor (runs continuously)";
         style=filled;
         fillcolor="#e5ffe5";
+        labelloc="t";
         
         check_queue [label="Check Queue\n(every 0.5s)", shape=hexagon, fillcolor="#ccffcc"];
         get_command [label="Get Next\nCommand", fillcolor="#ccffcc"];
@@ -69,39 +70,58 @@ digraph InteractiveAgentLoopFlow {
     }
     
     // Main flow connections
-    user -> check_status;
-    check_status -> add_queue [label="no"];
-    check_status -> show_status [label="yes"];
+    user -> check_status [penwidth=2];
+    check_status -> add_queue [label="no", penwidth=2];
+    check_status -> show_status [label="yes", color="#ff6b6b", penwidth=2];
     
-    add_queue -> check_queue [style=dotted, label="triggers"];
+    add_queue -> check_queue [style=dotted, label="triggers", color="#666666"];
     
-    check_queue -> get_command [label="has commands"];
-    check_queue -> check_queue [label="empty\n(wait)", style=dotted];
+    check_queue -> get_command [label="has commands", penwidth=2];
+    check_queue -> check_queue [label="empty\n(wait)", style=dotted, color="#999999"];
     
-    get_command -> set_processing;
-    set_processing -> coordinator;
+    get_command -> set_processing [penwidth=2];
+    set_processing -> coordinator [penwidth=2];
     
-    coordinator -> subagents [label="delegates"];
-    subagents -> tools;
+    coordinator -> subagents [label="delegates", penwidth=2];
+    subagents -> tools [penwidth=2];
     
-    tools -> update_state;
-    update_state -> clear_processing;
+    tools -> update_state [penwidth=2];
+    update_state -> clear_processing [penwidth=2];
     
-    clear_processing -> display;
-    display -> check_queue [style=dotted, label="loop back"];
+    clear_processing -> display [penwidth=2];
+    display -> check_queue [style=dotted, label="loop back", color="#666666"];
     
-    show_status -> user [style=dashed];
+    show_status -> user [style=dashed, color="#ff6b6b"];
     
-    // Persistent Session box
-    session [label="Persistent Session\n'interactive_session'\n\nMaintains:\n• Command queue\n• Processing state\n• Inventory data\n• Task results", 
+    // Persistent Session box with improved positioning
+    session [label="💾 Persistent Session\n'interactive_session'\n\nMaintains:\n• Command queue\n• Processing state\n• Inventory data\n• Task results", 
              shape=note, 
              style="filled", 
              fillcolor="#f0fff0",
              fontsize=10,
-             width=2.5];
+             width=2.8];
     
     // Position session centrally
     {rank=same; add_queue; session;}
     add_queue -> session [dir=none, style=dotted];
     update_state -> session [dir=none, style=dotted];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Legend";
+        style="filled";
+        fillcolor="#ffffff";
+        color="#000000";
+        fontsize=12;
+        
+        // Create invisible nodes for proper alignment
+        legend_main [shape=none, label=<
+            <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="5" BGCOLOR="white">
+                <TR><TD ALIGN="LEFT">Main flow</TD><TD>——————►</TD></TR>
+                <TR><TD ALIGN="LEFT">Background/async</TD><TD>- - - - - - - - -►</TD></TR>
+                <TR><TD ALIGN="LEFT">Alternative path</TD><TD>— — — — —►</TD></TR>
+                <TR><TD ALIGN="LEFT">Data connection</TD><TD>· · · · · · · · · ·</TD></TR>
+            </TABLE>
+        >];
+    }
 }

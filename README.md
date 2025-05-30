@@ -30,14 +30,18 @@ User → main.py → CoordinatorAgent → [GathererAgent, CrafterAgent]
 
 ### Interactive Agent Loop Architecture
 
-![Interactive Agent Loop](docs/interactive-agent-loop-simple.png)
+![Interactive Agent Loop](docs/interactive-agent-loop-flow.png)
 
-The interactive mode implements a persistent session with command queuing:
-- **User Input**: Type commands naturally, they're automatically queued
-- **Background Processing**: Continuously checks and processes commands
-- **Persistent Session**: Maintains all state (inventory, position, results) between commands
-- **Agent Execution**: Coordinator delegates to specialized sub-agents
-- **Results Display**: Responses shown as commands complete
+The interactive mode implements a persistent session with command queuing through six distinct stages:
+
+1. **User Input**: Commands are entered naturally and checked for special operations (like 'status')
+2. **Queue Management**: Commands are added to a persistent queue stored in session state
+3. **Background Processor**: A continuous loop checks the queue every 0.5 seconds for new commands
+4. **Agent Execution**: The Coordinator delegates tasks to specialized sub-agents (Gatherer/Crafter)
+5. **State Updates**: All results and game state are saved to the persistent session
+6. **Response Display**: Results are shown to the user as commands complete
+
+The entire flow maintains a single persistent session throughout, ensuring agents remember previous interactions and can build upon past actions.
 
 ## 🚀 Quick Start
 
