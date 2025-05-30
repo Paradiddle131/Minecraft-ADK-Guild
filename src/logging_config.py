@@ -78,7 +78,7 @@ def setup_logging(
     root_logger.addHandler(file_handler)
     
     # Structlog processors
-    timestamper = TimeStamper(fmt="iso")
+    timestamper = TimeStamper(fmt="%Y-%m-%dT%H:%M:%S", utc=True)
     
     shared_processors = [
         add_log_level,

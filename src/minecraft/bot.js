@@ -16,8 +16,11 @@ dotenv.config();
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.colorize(),
+        winston.format.printf(({ timestamp, level, message }) => {
+            return `${timestamp} [${level}     ] [JS]: ${message}`;
+        })
     ),
     transports: [
         new winston.transports.Console()
