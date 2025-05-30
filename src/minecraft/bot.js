@@ -52,7 +52,7 @@ class MinecraftBot {
             port: this.options.port,
             username: this.options.username,
             auth: this.options.auth,
-            version: false // Auto-detect version
+            version: this.options.version || process.env.MINECRAFT_AGENT_MINECRAFT_VERSION || '1.21.1'
         });
 
         // Load pathfinder plugin
