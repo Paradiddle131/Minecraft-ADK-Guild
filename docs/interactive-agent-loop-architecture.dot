@@ -1,0 +1,138 @@
+digraph InteractiveAgentLoop {
+    rankdir=TB;
+    graph [fontname="Arial", fontsize=12, splines=polyline];
+    node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=9];
+
+    // Color scheme
+    node [fillcolor="#e8f4f8"];
+    
+    // User Interface Layer
+    subgraph cluster_user {
+        label="User Interface Layer";
+        style=filled;
+        fillcolor="#f0f8ff";
+        
+        user [label="User\n(Terminal)", shape=ellipse, fillcolor="#b3d9ff"];
+        input [label="Input Handler\n(main.py)", fillcolor="#cce5ff"];
+        status_cmd [label="Status\nCommand", shape=diamond, fillcolor="#ffe5cc"];
+    }
+    
+    // Session Management Layer
+    subgraph cluster_session {
+        label="Persistent Session Layer";
+        style=filled;
+        fillcolor="#f0fff0";
+        
+        session [label="Session\n'interactive_session'\n(InMemorySessionService)", fillcolor="#d4ffd4"];
+        
+        // Session State
+        subgraph cluster_state {
+            label="Session State";
+            style=filled;
+            fillcolor="#e6ffe6";
+            
+            queue_state [label="task.command_queue\n[cmd1, cmd2, ...]", fillcolor="#ccffcc"];
+            processing_state [label="task.processing\ntrue/false", fillcolor="#ccffcc"];
+            current_cmd [label="task.current_command\n'active command'", fillcolor="#ccffcc"];
+            minecraft_state [label="minecraft.*\n(inventory, position)", fillcolor="#ccffcc"];
+            task_results [label="task.*.result\n(gather, craft results)", fillcolor="#ccffcc"];
+        }
+    }
+    
+    // Processing Layer
+    subgraph cluster_processing {
+        label="Command Processing Layer";
+        style=filled;
+        fillcolor="#fff0f0";
+        
+        queue_processor [label="Background Task\nprocess_queue_loop()\n(0.5s polling)", fillcolor="#ffd4d4", shape=hexagon];
+        add_queue [label="add_command_to_queue()", fillcolor="#ffcccc"];
+        process_cmd [label="process_next_command()", fillcolor="#ffcccc"];
+    }
+    
+    // ADK Runtime Layer
+    subgraph cluster_adk {
+        label="ADK Runtime Layer";
+        style=filled;
+        fillcolor="#f5f0ff";
+        
+        runner [label="Runner\n(Event Loop)", fillcolor="#e6d9ff"];
+        coordinator [label="CoordinatorAgent", fillcolor="#d9ccff"];
+        
+        subgraph cluster_subagents {
+            label="Sub-Agents";
+            gatherer [label="GathererAgent", fillcolor="#ccbfff"];
+            crafter [label="CrafterAgent", fillcolor="#ccbfff"];
+        }
+    }
+    
+    // Minecraft Layer
+    subgraph cluster_minecraft {
+        label="Minecraft Integration";
+        style=filled;
+        fillcolor="#ffffcc";
+        
+        bot_controller [label="BotController\n(Singleton)", fillcolor="#ffff99"];
+        bridge [label="BridgeManager\n(WebSocket)", fillcolor="#ffff99"];
+        mineflayer [label="Mineflayer Bot\n(JavaScript)", fillcolor="#ffff66"];
+    }
+    
+    // Main Flow Connections
+    user -> input [label="Types command"];
+    input -> status_cmd [label="'status'?", style=dashed];
+    status_cmd -> session [label="Show queue", style=dashed];
+    
+    input -> add_queue [label="Add to queue"];
+    add_queue -> session [label="append_event\n(state_delta)"];
+    session -> queue_state [label="Update"];
+    
+    // Background Processing Loop
+    queue_processor -> session [label="Check queue\n(every 0.5s)", style=dotted];
+    queue_state -> queue_processor [label="Has commands?", style=dotted];
+    queue_processor -> process_cmd [label="Process next"];
+    
+    process_cmd -> processing_state [label="Set true"];
+    process_cmd -> current_cmd [label="Set current"];
+    process_cmd -> runner [label="run_async()"];
+    
+    // ADK Processing
+    runner -> coordinator [label="Execute"];
+    coordinator -> gatherer [label="transfer_to_agent", style=dashed];
+    coordinator -> crafter [label="transfer_to_agent", style=dashed];
+    
+    gatherer -> bot_controller [label="Use tools"];
+    crafter -> bot_controller [label="Use tools"];
+    
+    bot_controller -> bridge [label="Commands"];
+    bridge -> mineflayer [label="WebSocket"];
+    
+    // Results Flow Back
+    mineflayer -> bridge [label="Events", style=dashed, color="blue"];
+    bridge -> bot_controller [label="Results", style=dashed, color="blue"];
+    bot_controller -> gatherer [label="Tool results", style=dashed, color="blue"];
+    bot_controller -> crafter [label="Tool results", style=dashed, color="blue"];
+    
+    gatherer -> task_results [label="Update state", style=dashed, color="blue"];
+    crafter -> task_results [label="Update state", style=dashed, color="blue"];
+    gatherer -> minecraft_state [label="Update state", style=dashed, color="blue"];
+    crafter -> minecraft_state [label="Update state", style=dashed, color="blue"];
+    
+    coordinator -> runner [label="Final response", style=dashed, color="blue"];
+    runner -> process_cmd [label="Complete", style=dashed, color="blue"];
+    process_cmd -> processing_state [label="Set false", style=dashed, color="blue"];
+    process_cmd -> current_cmd [label="Clear", style=dashed, color="blue"];
+    process_cmd -> user [label="Display response", style=dashed, color="blue"];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Legend";
+        style=filled;
+        fillcolor="#f5f5f5";
+        
+        legend1 [label="Solid arrows: Main flow", shape=none];
+        legend2 [label="Dashed arrows: Conditional/Results", shape=none];
+        legend3 [label="Dotted arrows: Polling", shape=none];
+        legend4 [label="Blue arrows: Response flow", shape=none];
+    }
+}
