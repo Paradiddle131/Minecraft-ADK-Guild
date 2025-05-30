@@ -6,7 +6,6 @@ Orchestrates CoordinatorAgent with GathererAgent and CrafterAgent sub-agents
 import asyncio
 import argparse
 import sys
-from typing import Optional
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -20,8 +19,10 @@ from src.logging_config import setup_logging, get_logger
 from src.minecraft_data_service import MinecraftDataService
 from src.minecraft_bot_controller import BotController
 
-# Module-level logger (will be properly configured in main())
 logger = get_logger(__name__)
+
+# Global command queue for interactive mode
+command_queue = asyncio.Queue()
 
 
 async def setup_agents(bridge_manager: BridgeManager, config=None):
@@ -109,25 +110,37 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     return coordinator, runner, session_service
 
 
-async def run_agent_system(command: str, runner: Runner, session_service: InMemorySessionService):
-    """Execute a command through the agent system
+async def initialize_session(session_service: InMemorySessionService):
+    """Initialize the persistent session
+    
+    Args:
+        session_service: Session service for state management
+        
+    Returns:
+        Session object
+    """
+    session = await session_service.create_session(
+        app_name="minecraft_multiagent",
+        user_id="player",
+        session_id="interactive_session"
+    )
+    logger.info("Created new session for interactive mode")
+    
+    return session
+
+
+async def process_command(command: str, runner: Runner, session):
+    """Process a single command
     
     Args:
         command: User command to process
         runner: ADK Runner instance
-        session_service: Session service for state management
+        session: Current session object
         
     Returns:
         Agent response string
     """
-    # Create or get session
-    session = await session_service.create_session(
-        app_name="minecraft_multiagent",
-        user_id="player"
-    )
-    
-    # Store user request in state for agents to access
-    session.state["user_request"] = command
+    logger.info(f"Processing command: {command}")
     
     # Create user message
     user_content = types.Content(
@@ -137,28 +150,55 @@ async def run_agent_system(command: str, runner: Runner, session_service: InMemo
     
     # Execute through runner
     final_response = ""
-    logger.info(f"Processing command: {command}")
     
-    async for event in runner.run_async(
-        user_id="player",
-        session_id=session.id,
-        new_message=user_content
-    ):
-        if event.is_final_response() and event.content:
-            final_response = ''.join(
-                part.text or '' for part in event.content.parts
-            )
-    
-    # Log task results from state
-    gather_result = session.state.get("task.gather.result")
-    craft_result = session.state.get("task.craft.result")
-    
-    if gather_result:
-        logger.info(f"Gather result: {gather_result}")
-    if craft_result:
-        logger.info(f"Craft result: {craft_result}")
+    try:
+        async for event in runner.run_async(
+            user_id="player",
+            session_id=session.id,
+            new_message=user_content
+        ):
+            if event.is_final_response() and event.content:
+                final_response = ''.join(
+                    part.text or '' for part in event.content.parts
+                )
         
-    return final_response
+        logger.info(f"Command processed successfully: {command}")
+        return final_response
+    except Exception as e:
+        logger.error(f"Error processing command '{command}': {e}", exc_info=True)
+        return f"Error processing command: {str(e)}"
+
+
+async def command_processor(runner: Runner, session):
+    """Background task to process commands from the queue"""
+    logger.info("Starting command processor task")
+    
+    while True:
+        try:
+            # Wait for command from queue
+            command = await command_queue.get()
+            logger.debug(f"Got command from queue: {command}")
+            
+            # Process the command
+            response = await process_command(command, runner, session)
+            
+            # Print response
+            if response:
+                print(f"\n{response}\n")
+            
+            # Mark task as done
+            command_queue.task_done()
+            
+            # Log queue status
+            queue_size = command_queue.qsize()
+            if queue_size > 0:
+                logger.info(f"Commands remaining in queue: {queue_size}")
+                
+        except asyncio.CancelledError:
+            logger.info("Command processor cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in command processor: {e}", exc_info=True)
 
 
 def parse_args():
@@ -209,43 +249,98 @@ async def main():
         await bridge.initialize()
         
         # Setup agents
-        coordinator, runner, session_service = await setup_agents(bridge, config)
+        _, runner, session_service = await setup_agents(bridge, config)
+        
+        # Initialize session
+        session = await initialize_session(session_service)
         
         if args.interactive:
-            # Interactive mode
+            # Interactive mode with command queue
             logger.info("Starting interactive mode. Type 'exit' to quit.")
             
-            while True:
-                try:
-                    command = input("\nMinecraft Agent> ").strip()
-                    
-                    if command.lower() in ['exit', 'quit', 'q']:
+            # Start command processor task
+            logger.info("Creating command processor task...")
+            processor_task = asyncio.create_task(command_processor(runner, session))
+            logger.info(f"Command processor task created: {processor_task}")
+            
+            try:
+                # Create a queue for user input
+                import threading
+                
+                input_queue = asyncio.Queue()
+                
+                # Get the running event loop
+                loop = asyncio.get_running_loop()
+                
+                def read_input():
+                    """Read input in a separate thread"""
+                    while True:
+                        try:
+                            line = input("\nMinecraft Agent> ").strip()
+                            asyncio.run_coroutine_threadsafe(
+                                input_queue.put(line),
+                                loop
+                            )
+                        except EOFError:
+                            break
+                
+                # Start input thread
+                input_thread = threading.Thread(target=read_input, daemon=True)
+                input_thread.start()
+                
+                while True:
+                    try:
+                        # Get user input with timeout to allow other tasks to run
+                        try:
+                            command = await asyncio.wait_for(input_queue.get(), timeout=0.1)
+                        except asyncio.TimeoutError:
+                            continue
+                        
+                        if command.lower() in ['exit', 'quit', 'q']:
+                            break
+                            
+                        if not command:
+                            continue
+                            
+                        if command.lower() == 'status':
+                            # Show queue status
+                            queue_size = command_queue.qsize()
+                            print(f"\nQueue Status:")
+                            print(f"  Commands in queue: {queue_size}")
+                            continue
+                            
+                        # Add command to queue
+                        await command_queue.put(command)
+                        logger.info(f"Added command to queue: {command}")
+                        print(f"Command queued for processing.")
+                        
+                    except KeyboardInterrupt:
+                        logger.info("Exiting interactive mode...")
                         break
+                    except Exception as e:
+                        logger.error(f"Error handling input: {e}")
                         
-                    if not command:
-                        continue
-                        
-                    response = await run_agent_system(command, runner, session_service)
-                    logger.info(f"Agent response: {response}")
-                    
-                except KeyboardInterrupt:
-                    logger.info("Exiting interactive mode...")
-                    break
-                except Exception as e:
-                    logger.error(f"Error processing command: {e}")
+            finally:
+                # Cancel processor task
+                processor_task.cancel()
+                try:
+                    await processor_task
+                except asyncio.CancelledError:
+                    pass
                     
         elif args.command:
             # Single command mode
-            response = await run_agent_system(args.command, runner, session_service)
-            logger.info(f"Agent response: {response}")
+            response = await process_command(args.command, runner, session)
+            if response:
+                print(response)
         else:
             # No command provided
             logger.info("Please provide a command or use --interactive mode")
-            logger.info("Examples:")
-            logger.info("  python main.py 'check inventory'")
-            logger.info("  python main.py 'gather 3 oak logs'")
-            logger.info("  python main.py 'craft wooden pickaxe'")
-            logger.info("  python main.py --interactive")
+            print("Examples:")
+            print("  python main.py 'check inventory'")
+            print("  python main.py 'gather 3 oak logs'")
+            print("  python main.py 'craft wooden pickaxe'")
+            print("  python main.py --interactive")
             
     except Exception as e:
         logger.error(f"Failed to initialize: {e}")

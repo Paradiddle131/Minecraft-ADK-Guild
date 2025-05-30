@@ -8,8 +8,11 @@ const winston = require('winston');
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.colorize(),
+        winston.format.printf(({ timestamp, level, message }) => {
+            return `${timestamp} [${level}     ] [JS]: ${message}`;
+        })
     ),
     transports: [
         new winston.transports.Console()
@@ -231,7 +234,7 @@ class MinecraftEventEmitter extends EventEmitter {
         };
         
         // Always log emission for lifecycle tracking
-        logger.info('Event lifecycle: emitted', logData);
+        logger.debug('Event lifecycle: emitted', logData);
         
         // Debug mode provides additional detail
         if (this.debugMode) {

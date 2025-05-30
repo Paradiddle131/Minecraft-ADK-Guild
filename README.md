@@ -28,6 +28,21 @@ User → main.py → CoordinatorAgent → [GathererAgent, CrafterAgent]
    - **Pathfinding**: Navigation and movement
    - **Event System**: Real-time world updates
 
+### Interactive Agent Loop Architecture
+
+![Interactive Agent Loop](docs/interactive-agent-loop-flow.png)
+
+The interactive mode implements a persistent session with command queuing through six distinct stages:
+
+1. **User Input**: Commands are entered naturally and checked for special operations (like 'status')
+2. **Queue Management**: Commands are added to a persistent queue stored in session state
+3. **Background Processor**: A continuous loop checks the queue every 0.5 seconds for new commands
+4. **Agent Execution**: The Coordinator delegates tasks to specialized sub-agents (Gatherer/Crafter)
+5. **State Updates**: All results and game state are saved to the persistent session
+6. **Response Display**: Results are shown to the user as commands complete
+
+The entire flow maintains a single persistent session throughout, ensuring agents remember previous interactions and can build upon past actions.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -62,6 +77,17 @@ node src/minecraft/bot.js
 python main.py "check inventory"
 python main.py "gather 3 oak logs"
 python main.py "craft a wooden pickaxe"
+```
+
+Interactive mode with persistent session:
+```bash
+python main.py --interactive
+
+# In interactive mode:
+Minecraft Agent> gather wood
+Minecraft Agent> craft planks
+Minecraft Agent> status  # View queue status
+Minecraft Agent> exit    # Quit
 ```
 
 ## 📁 Project Structure
