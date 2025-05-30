@@ -52,7 +52,7 @@ class MinecraftBot {
             port: this.options.port,
             username: this.options.username,
             auth: this.options.auth,
-            version: false // Auto-detect version
+            version: this.options.version || process.env.MINECRAFT_AGENT_MINECRAFT_VERSION || '1.21.1'
         });
 
         // Load pathfinder plugin
@@ -254,10 +254,8 @@ class MinecraftBot {
         this.bot.on('consume', () => {
             const heldItem = this.bot.heldItem;
             if (heldItem && heldItem.name) {
-                // Estimate food points and saturation (these might not be directly available)
-                const foodPoints = this.getFoodPoints(heldItem.name);
-                const saturation = this.getSaturation(heldItem.name);
-                this.eventEmitter.emitItemConsumeEvent(heldItem, foodPoints, saturation);
+                // Food data now handled by Python MinecraftDataService
+                this.eventEmitter.emitItemConsumeEvent(heldItem, 0, 0);
             }
         });
 
@@ -604,6 +602,51 @@ class MinecraftBot {
                 return blocks.map(pos => ({ x: pos.x, y: pos.y, z: pos.z }));
             },
 
+            // Additional simplified action handlers for Python BotController
+            'js_lookAt': async ({ x, y, z }) => {
+                this.bot.lookAt(new Vec3(x, y, z));
+                return { looked_at: { x, y, z } };
+            },
+
+            'js_stopDigging': async () => {
+                this.bot.stopDigging();
+                return { stopped: true };
+            },
+
+            'js_activateItem': async () => {
+                this.bot.activateItem();
+                return { activated: true };
+            },
+
+            'js_deactivateItem': async () => {
+                this.bot.deactivateItem();
+                return { deactivated: true };
+            },
+
+            'js_useOnBlock': async ({ x, y, z }) => {
+                const block = this.bot.blockAt(new Vec3(x, y, z));
+                if (!block) throw new Error('No block at position');
+                
+                await this.bot.activateBlock(block);
+                return { used_on: { x, y, z } };
+            },
+
+            'js_attackEntity': async ({ entity_id }) => {
+                const entity = this.bot.entities[entity_id];
+                if (!entity) throw new Error(`Entity ${entity_id} not found`);
+                
+                this.bot.attack(entity);
+                return { attacked: entity_id };
+            },
+
+            'js_dropItem': async ({ item_name, count = null }) => {
+                const item = this.bot.inventory.items().find(i => i.name === item_name);
+                if (!item) throw new Error(`Item ${item_name} not found in inventory`);
+                
+                await this.bot.tossStack(item, count);
+                return { dropped: item_name, count: count || item.count };
+            },
+
             // Crafting
             'craft': async ({ recipe: itemName, count = 1 }) => {
                 try {
@@ -663,25 +706,15 @@ class MinecraftBot {
                         };
                     }
                     
-                    // Check if we need a crafting table
-                    const needsCraftingTable = this.needsCraftingTable(normalizedName);
+                    // Check if we need a crafting table - assume any recipe not craftable in 2x2 needs table
+                    // Python MinecraftDataService now determines this
                     let craftingTable = null;
                     
-                    if (needsCraftingTable) {
-                        // Find nearby crafting table
-                        craftingTable = this.bot.findBlock({
-                            matching: this.bot.registry.blocksByName.crafting_table.id,
-                            maxDistance: 4
-                        });
-                        
-                        if (!craftingTable) {
-                            return {
-                                success: false,
-                                error: 'No crafting table nearby',
-                                missing_materials: { 'crafting_table': 1 }
-                            };
-                        }
-                    }
+                    // Try to find a crafting table nearby - let Python decide if needed
+                    craftingTable = this.bot.findBlock({
+                        matching: this.bot.registry.blocksByName.crafting_table.id,
+                        maxDistance: 4
+                    });
                     
                     // Get recipes for this item
                     const recipes = this.bot.recipesFor(item.id, null, 1, craftingTable);
@@ -765,46 +798,7 @@ class MinecraftBot {
         return faces[face] || faces.top;
     }
 
-    getFoodPoints(itemName) {
-        // Basic food points mapping - could be expanded with a proper food database
-        const foodValues = {
-            'apple': 4,
-            'bread': 5,
-            'cooked_beef': 8,
-            'cooked_chicken': 6,
-            'cooked_porkchop': 8,
-            'golden_apple': 4,
-            'cookie': 2,
-            'cake': 14
-        };
-        return foodValues[itemName] || 0;
-    }
-
-    getSaturation(itemName) {
-        // Basic saturation mapping
-        const saturationValues = {
-            'apple': 2.4,
-            'bread': 6.0,
-            'cooked_beef': 12.8,
-            'cooked_chicken': 7.2,
-            'cooked_porkchop': 12.8,
-            'golden_apple': 9.6,
-            'cookie': 0.4,
-            'cake': 0.4
-        };
-        return saturationValues[itemName] || 0;
-    }
-
-    needsCraftingTable(itemName) {
-        // Items that can be crafted in 2x2 inventory grid
-        const inventoryCraftable = [
-            'stick', 'planks', 'oak_planks', 'birch_planks', 'spruce_planks',
-            'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 
-            'cherry_planks', 'crafting_table'
-        ];
-        
-        return !inventoryCraftable.includes(itemName);
-    }
+    // Data lookup methods removed - now handled by Python MinecraftDataService
 
     async checkMissingMaterials(recipe, count = 1) {
         const missing = {};

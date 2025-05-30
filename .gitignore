@@ -43,6 +43,7 @@ htmlcov/
 # ai_docs
 ai_docs/
 ai_plans/
+ai_artifacts/
 
 # Docker devcontainer
 .devcontainer/

@@ -56,7 +56,7 @@ class AgentConfig(BaseSettings):
         description="Bot username in Minecraft"
     )
     minecraft_version: str = Field(
-        default="1.21",
+        default="1.21.1",
         description="Minecraft version for bot compatibility"
     )
 

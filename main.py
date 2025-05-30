@@ -17,6 +17,8 @@ from src.bridge.bridge_manager import BridgeManager
 from src.tools.agent_tools import create_gatherer_tools, create_crafter_tools
 from src.agents import CoordinatorAgent, GathererAgent, CrafterAgent
 from src.logging_config import setup_logging, get_logger
+from src.minecraft_data_service import MinecraftDataService
+from src.minecraft_bot_controller import BotController
 
 # Module-level logger (will be properly configured in main())
 logger = get_logger(__name__)
@@ -45,30 +47,43 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     # Create session service
     session_service = InMemorySessionService()
     
-    # Create enhanced tools for sub-agents
-    gatherer_tools = create_gatherer_tools(bridge_manager)
-    crafter_tools = create_crafter_tools(bridge_manager)
+    # Create shared services
+    minecraft_version = getattr(config, 'minecraft_version', '1.21.1')
+    mc_data_service = MinecraftDataService(minecraft_version)
+    bot_controller = BotController(bridge_manager)
     
-    # Create sub-agents with bridge integration
+    # Create sub-agents
     gatherer = GathererAgent(
         name="GathererAgent",
         model=config.default_model,
-        tools=gatherer_tools,
+        tools=[],  # Tools will be set after agent creation
         session_service=session_service,
         bridge_manager=bridge_manager,
         ai_credentials=ai_credentials,
-        config=config
+        config=config,
+        mc_data_service=mc_data_service,
+        bot_controller=bot_controller
     )
     
     crafter = CrafterAgent(
         name="CrafterAgent", 
         model=config.default_model,
-        tools=crafter_tools,
+        tools=[],  # Tools will be set after agent creation
         session_service=session_service,
         bridge_manager=bridge_manager,
         ai_credentials=ai_credentials,
-        config=config
+        config=config,
+        mc_data_service=mc_data_service,
+        bot_controller=bot_controller
     )
+    
+    # Now create enhanced tools with bot controller and minecraft data service
+    gatherer_tools = create_gatherer_tools(gatherer.bot_controller, gatherer.mc_data)
+    crafter_tools = create_crafter_tools(crafter.bot_controller, crafter.mc_data)
+    
+    # Update agents with tools
+    gatherer.tools = gatherer_tools
+    crafter.tools = crafter_tools
     
     # Create coordinator with sub-agents
     coordinator = CoordinatorAgent(
@@ -78,7 +93,9 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         session_service=session_service,
         bridge_manager=bridge_manager,
         ai_credentials=ai_credentials,
-        config=config
+        config=config,
+        mc_data_service=mc_data_service,
+        bot_controller=bot_controller
     )
     
     # Create runner for the coordinator

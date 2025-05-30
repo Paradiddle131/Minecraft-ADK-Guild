@@ -5,7 +5,7 @@ description = "Multi-agent Minecraft system using Google ADK and Mineflayer"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk>=0.1.0",
+    "google-adk>=1.1.1",
     "javascript>=1.2.2",
     "websockets>=12.0",
     "structlog>=24.0.0",

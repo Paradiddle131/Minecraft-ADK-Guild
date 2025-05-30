@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from ..bridge.bridge_manager import BridgeManager
 from ..config import AgentConfig, get_config, setup_google_ai_credentials
 from ..logging_config import get_logger
+from ..minecraft_data_service import MinecraftDataService
+from ..minecraft_bot_controller import BotController
 
 logger = get_logger(__name__)
 
@@ -20,7 +22,9 @@ class BaseMinecraftAgent(ABC):
         self,
         name: str,
         bridge_manager: Optional[BridgeManager] = None,
-        config: Optional[AgentConfig] = None
+        config: Optional[AgentConfig] = None,
+        mc_data_service: Optional[MinecraftDataService] = None,
+        bot_controller: Optional[BotController] = None
     ):
         """Initialize base agent with bridge access
         
@@ -28,11 +32,28 @@ class BaseMinecraftAgent(ABC):
             name: Agent name for identification
             bridge_manager: Shared BridgeManager instance
             config: Agent configuration
+            mc_data_service: Optional existing MinecraftDataService instance
+            bot_controller: Optional existing BotController instance
         """
         self.name = name
         self.bridge = bridge_manager
         self.config = config or get_config()
         self.ai_credentials = None
+        
+        # Get or create MinecraftDataService (singleton)
+        if mc_data_service:
+            self.mc_data = mc_data_service
+        else:
+            minecraft_version = getattr(self.config, 'minecraft_version', '1.21.1')
+            self.mc_data = MinecraftDataService(minecraft_version)
+        
+        # Get or create BotController (singleton)
+        if bot_controller:
+            self.bot_controller = bot_controller
+        elif bridge_manager:
+            self.bot_controller = BotController(bridge_manager)
+        else:
+            self.bot_controller = None
         
         # Setup Google AI credentials if not already configured
         try:
