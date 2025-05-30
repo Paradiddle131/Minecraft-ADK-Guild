@@ -66,9 +66,9 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         config=config
     )
     
-    # Now create enhanced tools with minecraft data service
-    gatherer_tools = create_gatherer_tools(bridge_manager, gatherer.mc_data)
-    crafter_tools = create_crafter_tools(bridge_manager, crafter.mc_data)
+    # Now create enhanced tools with bot controller and minecraft data service
+    gatherer_tools = create_gatherer_tools(gatherer.bot_controller, gatherer.mc_data)
+    crafter_tools = create_crafter_tools(crafter.bot_controller, crafter.mc_data)
     
     # Update agents with tools
     gatherer.tools = gatherer_tools

@@ -6,19 +6,23 @@ from typing import Any, Dict, List, Optional
 from google.adk.tools import ToolContext
 
 from ..logging_config import get_logger
+from ..minecraft_bot_controller import BotController
+from ..minecraft_data_service import MinecraftDataService
 
 logger = get_logger(__name__)
 
-# Global bridge reference for tool functions
-_bridge_manager = None
-_mc_data_service = None
+# Global references for tool functions
+_bot_controller: Optional[BotController] = None
+_mc_data_service: Optional[MinecraftDataService] = None
 
-def _set_bridge_manager(bridge):
-    """Set the global bridge manager for tool functions"""
-    global _bridge_manager
-    _bridge_manager = bridge
 
-def _set_minecraft_data_service(mc_data):
+def _set_bot_controller(controller: BotController):
+    """Set the global bot controller for tool functions"""
+    global _bot_controller
+    _bot_controller = controller
+
+
+def _set_minecraft_data_service(mc_data: MinecraftDataService):
     """Set the global minecraft data service for tool functions"""
     global _mc_data_service
     _mc_data_service = mc_data
@@ -27,9 +31,7 @@ def _set_minecraft_data_service(mc_data):
 async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Move bot to specified coordinates using pathfinding.
     
-    This tool now properly waits for the bot to reach the destination before returning.
-    The bot will pathfind to the target coordinates and return when movement is complete.
-    Includes timeout protection to prevent infinite waits if pathfinding gets stuck.
+    Enhanced version that uses BotController and provides additional context.
 
     Args:
         x: Target X coordinate
@@ -40,9 +42,12 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
     Returns:
         Dictionary with movement result including actual final position
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
         # Get current position for distance calculation
-        current_pos = await _bridge_manager.get_position()
+        current_pos = await _bot_controller.get_position()
         start_distance = (
             (x - current_pos["x"]) ** 2
             + (y - current_pos["y"]) ** 2
@@ -60,155 +65,43 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
                 'start_distance': start_distance
             }
 
-        # Execute movement - this now waits for completion with timeout
-        try:
-            movement_result = await _bridge_manager.move_to(x, y, z, timeout)
-        except TimeoutError as e:
-            logger.warning(f"Movement command timed out: {e}")
-            # Try to get current position anyway
-            try:
-                actual_pos = await _bridge_manager.get_position()
-                # Check if we're close enough to target
-                distance_to_target = (
-                    (actual_pos["x"] - x) ** 2
-                    + (actual_pos["y"] - y) ** 2
-                    + (actual_pos["z"] - z) ** 2
-                ) ** 0.5
-                
-                if distance_to_target < 2.0:  # Within 2 blocks is close enough
-                    logger.info(f"Movement likely succeeded despite timeout - distance to target: {distance_to_target:.1f}")
-                    movement_result = {
-                        'actual_position': actual_pos,
-                        'status': 'completed_with_timeout',
-                        'message': 'Reached target despite timeout'
-                    }
-                else:
-                    raise  # Re-raise the timeout error
-            except Exception:
-                raise e  # Re-raise original timeout
+        # Use BotController for movement
+        result = await _bot_controller.move_to(x, y, z)
         
-        # The bridge.move_to already handles the pathfinder.goto command and waits for completion
-        # The result should contain the actual position after movement
-        
-        # Handle the movement result - it should be a dict from the JS bot
-        if isinstance(movement_result, dict):
-            actual_pos = movement_result.get('actual_position')
-            if not actual_pos:
-                # If no actual_position, try to get current position
-                actual_pos = await _bridge_manager.get_position()
-        else:
-            # Fallback - get current position
-            actual_pos = await _bridge_manager.get_position()
+        # Update state based on result
+        if result.get("status") == "success":
+            # Get actual position after movement
+            actual_pos = await _bot_controller.get_position()
             
-        final_distance = (
-            (actual_pos["x"] - current_pos["x"]) ** 2
-            + (actual_pos["y"] - current_pos["y"]) ** 2
-            + (actual_pos["z"] - current_pos["z"]) ** 2
-        ) ** 0.5
-
-        result = {
-            "status": "success",
-            "target_position": {"x": x, "y": y, "z": z},
-            "actual_position": actual_pos,
-            "distance_traveled": final_distance
-        }
-        
-        # Add additional info from movement_result if available
-        if isinstance(movement_result, dict):
-            result["movement_status"] = movement_result.get('status', 'completed')
-            result["message"] = movement_result.get('message', 'Movement completed')
-            if 'duration_ms' in movement_result:
-                result["duration_ms"] = movement_result['duration_ms']
-        
-        # Update position and clear movement state
-        if tool_context and hasattr(tool_context, 'state'):
-            tool_context.state['minecraft_position'] = {
-                'x': actual_pos['x'],
-                'y': actual_pos['y'], 
-                'z': actual_pos['z'],
-                'timestamp': __import__('time').time()
+            # Update position in state
+            if tool_context and hasattr(tool_context, 'state'):
+                tool_context.state['minecraft_position'] = {
+                    'x': actual_pos['x'],
+                    'y': actual_pos['y'], 
+                    'z': actual_pos['z'],
+                    'timestamp': __import__('time').time()
+                }
+                tool_context.state['temp:movement_in_progress'] = None
+                
+            return {
+                "status": "success",
+                "target_position": {"x": x, "y": y, "z": z},
+                "actual_position": actual_pos,
+                "distance_traveled": start_distance
             }
-            # Clear temp movement state by setting to None
-            tool_context.state['temp:movement_in_progress'] = None
-            tool_context.state['temp:last_movement'] = {
-                'target': {'x': x, 'y': y, 'z': z},
-                'actual': actual_pos,
-                'duration_ms': movement_result.get('duration_ms', 0) if isinstance(movement_result, dict) else 0,
-                'status': 'completed',
-                'timestamp': __import__('time').time()
-            }
-            logger.info(f"Movement completed to ({actual_pos['x']}, {actual_pos['y']}, {actual_pos['z']})")
-        
-        return result
+        else:
+            return result
 
     except Exception as e:
         logger.error(f"Movement failed: {e}")
         
-        # Attempt recovery for certain failure types
-        if "timeout" in str(e).lower() or "no path" in str(e).lower() or "stuck" in str(e).lower():
-            logger.info("Attempting movement recovery with adjusted goals")
-            
-            # Try nearby alternative goals
-            for offset in [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]:
-                alt_x = x + offset[0]
-                alt_y = y + offset[1]
-                alt_z = z + offset[2]
-                
-                try:
-                    logger.info(f"Trying alternative goal: ({alt_x}, {alt_y}, {alt_z})")
-                    recovery_result = await _bridge_manager.move_to(alt_x, alt_y, alt_z, timeout=15000)
-                    
-                    if 'error' not in recovery_result and 'actual_position' in recovery_result:
-                        actual_pos = recovery_result['actual_position']
-                        logger.info(f"Recovery successful, reached ({actual_pos['x']}, {actual_pos['y']}, {actual_pos['z']})")
-                        
-                        # Update state with recovery result
-                        if tool_context and hasattr(tool_context, 'state'):
-                            tool_context.state['minecraft_position'] = {
-                                'x': actual_pos['x'],
-                                'y': actual_pos['y'], 
-                                'z': actual_pos['z'],
-                                'timestamp': __import__('time').time()
-                            }
-                            tool_context.state['temp:movement_in_progress'] = None
-                            tool_context.state['temp:last_movement'] = {
-                                'target': {'x': x, 'y': y, 'z': z},
-                                'actual': actual_pos,
-                                'status': 'completed_with_recovery',
-                                'recovery_offset': offset,
-                                'timestamp': __import__('time').time()
-                            }
-                        
-                        return {
-                            "status": "success",
-                            "target_position": {"x": x, "y": y, "z": z},
-                            "actual_position": actual_pos,
-                            "movement_status": "completed_with_recovery",
-                            "message": f"Reached nearby position after recovery (offset: {offset})"
-                        }
-                        
-                except Exception as recovery_error:
-                    logger.debug(f"Recovery attempt failed: {recovery_error}")
-                    continue
-        
-        # If recovery failed or wasn't attempted, return error
-        error_result = {"status": "error", "error": str(e)}
-        
-        # Save movement error and clear temp state
-        if tool_context and hasattr(tool_context, 'state'):
-            tool_context.state['minecraft_last_movement_error'] = {
-                'error': str(e),
-                'target': {'x': x, 'y': y, 'z': z},
-                'timestamp': __import__('time').time()
-            }
-            # Clear temp movement state on error by setting to None
-            tool_context.state['temp:movement_in_progress'] = None
-        
-        return error_result
+        return {"status": "error", "error": str(e)}
 
 
 async def dig_block(x: int, y: int, z: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Dig a block at specified coordinates.
+    
+    Enhanced version that provides block information from MinecraftDataService.
 
     Args:
         x: Block X coordinate
@@ -216,22 +109,47 @@ async def dig_block(x: int, y: int, z: int, tool_context: Optional[ToolContext] 
         z: Block Z coordinate
 
     Returns:
-        Dictionary with dig result
+        Dictionary with dig result and block information
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        # Check what block is there first
-        block_info = await _bridge_manager.execute_command("world.getBlock", x=x, y=y, z=z)
+        # Get block information first
+        block_info = await _bot_controller.get_block_at(x, y, z)
         block_name = block_info.get("name", "unknown")
 
         if block_name == "air":
             return {"status": "error", "error": "No block to dig at this position"}
 
+        # Get additional block data from MinecraftDataService
+        block_data = None
+        if _mc_data_service and block_name != "unknown":
+            block_data = _mc_data_service.get_block_by_name(block_name)
+
         logger.info(f"Digging {block_name} at ({x}, {y}, {z})")
 
-        # Dig the block
-        await _bridge_manager.dig_block(x, y, z)
-
-        return {"status": "success", "block": block_name, "position": {"x": x, "y": y, "z": z}}
+        # Start digging
+        result = await _bot_controller.start_digging([x, y, z])
+        
+        if result.get("status") == "success":
+            response = {
+                "status": "success",
+                "block": block_name,
+                "position": {"x": x, "y": y, "z": z}
+            }
+            
+            # Add enriched block data if available
+            if block_data:
+                response["block_data"] = {
+                    "hardness": block_data.get("hardness", 0),
+                    "material": block_data.get("material", "unknown"),
+                    "drops": block_data.get("drops", [])
+                }
+                
+            return response
+        else:
+            return result
 
     except Exception as e:
         logger.error(f"Dig failed: {e}")
@@ -248,6 +166,8 @@ async def place_block(
 ) -> Dict[str, Any]:
     """Place a block at specified coordinates.
 
+    Enhanced version that validates blocks using MinecraftDataService and uses BotController.
+
     Args:
         x: Reference block X coordinate
         y: Reference block Y coordinate
@@ -256,46 +176,108 @@ async def place_block(
         face: Which face of the reference block to place against
 
     Returns:
-        Dictionary with place result
+        Dictionary with place result and block information
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
+        # Normalize and validate block type using MinecraftDataService
+        normalized_block = block_type
+        block_data = None
+        if _mc_data_service:
+            block_data = _mc_data_service.get_block_by_name(block_type)
+            if not block_data:
+                # Try to find similar block names
+                all_blocks = _mc_data_service.get_all_blocks()
+                similar_blocks = [b for b in all_blocks if block_type.lower() in b.get("name", "").lower()]
+                if similar_blocks:
+                    return {
+                        "status": "error", 
+                        "error": f"Block '{block_type}' not found. Similar blocks: {[b['name'] for b in similar_blocks[:3]]}"
+                    }
+                else:
+                    return {"status": "error", "error": f"Unknown block type: {block_type}"}
+            else:
+                normalized_block = block_data.get("name", block_type)
+
         # Check inventory for the block
-        inventory = await _bridge_manager.get_inventory()
-        has_block = any(item["name"] == block_type for item in inventory)
+        inventory = await _bot_controller.get_inventory_items()
+        has_block = any(item["name"] == normalized_block for item in inventory)
 
         if not has_block:
-            return {"status": "error", "error": f"No {block_type} in inventory"}
+            # Check for alternative block names in inventory
+            inventory_names = [item["name"] for item in inventory]
+            return {
+                "status": "error", 
+                "error": f"No {normalized_block} in inventory. Available blocks: {[name for name in inventory_names if 'block' in name.lower() or any(material in name for material in ['wood', 'stone', 'dirt', 'sand'])]}",
+                "inventory_blocks": [name for name in inventory_names if 'block' in name.lower()]
+            }
+
+        # Convert face string to face vector for BotController
+        face_vectors = {
+            "top": [0, 1, 0],
+            "bottom": [0, -1, 0], 
+            "north": [0, 0, -1],
+            "south": [0, 0, 1],
+            "east": [1, 0, 0],
+            "west": [-1, 0, 0]
+        }
+        face_vector = face_vectors.get(face.lower(), [0, 1, 0])  # Default to top
 
         # Equip the block
-        await _bridge_manager.execute_command(
-            "inventory.equip", item=block_type, destination="hand"
-        )
+        equip_result = await _bot_controller.equip_item(normalized_block, "hand")
+        if equip_result.get("status") != "success":
+            return {"status": "error", "error": f"Failed to equip {normalized_block}: {equip_result.get('error', 'Unknown error')}"}
 
-        # Place the block
-        await _bridge_manager.place_block(x, y, z, face)
+        # Place the block using BotController
+        place_result = await _bot_controller.place_block([x, y, z], face_vector)
+        
+        if place_result.get("status") == "success":
+            logger.info(f"Placed {normalized_block} at ({x}, {y}, {z}) on {face} face")
 
-        logger.info(f"Placed {block_type} at ({x}, {y}, {z})")
-
-        return {
-            "status": "success",
-            "block": block_type,
-            "position": {"x": x, "y": y, "z": z},
-            "face": face,
-        }
+            response = {
+                "status": "success",
+                "block": normalized_block,
+                "position": {"x": x, "y": y, "z": z},
+                "face": face,
+                "face_vector": face_vector
+            }
+            
+            # Add enriched block data if available
+            if block_data:
+                response["block_data"] = {
+                    "hardness": block_data.get("hardness", 0),
+                    "material": block_data.get("material", "unknown"),
+                    "stack_size": block_data.get("stackSize", 64),
+                    "transparent": block_data.get("transparent", False)
+                }
+                
+            return response
+        else:
+            return place_result
 
     except Exception as e:
         logger.error(f"Place failed: {e}")
         return {"status": "error", "error": str(e)}
 
 
-async def get_position() -> Dict[str, Any]:
+async def get_position(tool_context=None) -> Dict[str, Any]:
     """Get the bot's current position in the world.
     
+    Enhanced version that uses BotController.
+    
+    Args:
+        tool_context: Optional ADK tool context for state management
+        
     Returns:
         Dictionary with bot's coordinates
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        position = await _bridge_manager.get_position()
+        position = await _bot_controller.get_position()
         
         if position:
             return {
@@ -322,30 +304,82 @@ async def get_position() -> Dict[str, Any]:
 async def get_movement_status(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Check if the bot is currently moving and get movement details.
     
+    Enhanced version that works with BotController and session state.
+    
     Returns:
         Dictionary with movement status and details
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        # Check bot movement status via bridge
-        movement_info = await _bridge_manager.execute_command("pathfinder.isMoving")
+        # Get current position for movement detection
+        current_pos = await _bot_controller.get_position()
         
         result = {
             'status': 'success',
-            'is_moving': movement_info.get('isMoving', False),
-            'has_goal': movement_info.get('goal') is not None
+            'current_position': current_pos,
+            'is_moving': False,
+            'has_goal': False
         }
         
-        # Add goal information if available
-        if movement_info.get('goal'):
-            goal = movement_info['goal']
-            result['goal'] = goal
-            
-        # Add session state information if available
+        # Check session state for movement tracking
         if tool_context and hasattr(tool_context, 'state'):
             movement_progress = tool_context.state.get('temp:movement_in_progress')
             if movement_progress:
-                result['session_movement'] = movement_progress
-                result['movement_duration'] = __import__('time').time() - movement_progress['start_time']
+                # Calculate if we're still moving based on session state
+                current_time = __import__('time').time()
+                movement_duration = current_time - movement_progress['start_time']
+                start_position = movement_progress['start_position']
+                target = movement_progress['target']
+                
+                # Calculate distance from start and to target
+                distance_from_start = (
+                    (current_pos['x'] - start_position['x']) ** 2 +
+                    (current_pos['y'] - start_position['y']) ** 2 +
+                    (current_pos['z'] - start_position['z']) ** 2
+                ) ** 0.5
+                
+                distance_to_target = (
+                    (current_pos['x'] - target['x']) ** 2 +
+                    (current_pos['y'] - target['y']) ** 2 +
+                    (current_pos['z'] - target['z']) ** 2
+                ) ** 0.5
+                
+                # Consider moving if we haven't reached target and it's been recent
+                result['is_moving'] = distance_to_target > 1.0 and movement_duration < 60  # 60 second timeout
+                result['has_goal'] = True
+                result['session_movement'] = {
+                    'target': target,
+                    'distance_to_target': distance_to_target,
+                    'distance_from_start': distance_from_start,
+                    'movement_duration': movement_duration,
+                    'start_distance': movement_progress.get('start_distance', 0)
+                }
+                
+                # Calculate movement progress
+                if movement_progress.get('start_distance', 0) > 0:
+                    progress_percent = min(100, (distance_from_start / movement_progress['start_distance']) * 100)
+                    result['session_movement']['progress_percent'] = progress_percent
+        
+        # Try to get pathfinder status if available (fallback to bridge)
+        try:
+            bridge_manager = _bot_controller.bridge_manager_instance
+            pathfinder_info = await bridge_manager.execute_command("pathfinder.isMoving")
+            if pathfinder_info:
+                result['pathfinder_status'] = {
+                    'is_moving': pathfinder_info.get('isMoving', False),
+                    'has_goal': pathfinder_info.get('goal') is not None
+                }
+                # Override our detection with pathfinder if available
+                result['is_moving'] = pathfinder_info.get('isMoving', result['is_moving'])
+                result['has_goal'] = pathfinder_info.get('goal') is not None or result['has_goal']
+                
+                if pathfinder_info.get('goal'):
+                    result['pathfinder_goal'] = pathfinder_info['goal']
+        except Exception as pathfinder_error:
+            logger.debug(f"Could not get pathfinder status: {pathfinder_error}")
+            # Not a critical error, continue with session-based detection
         
         return result
         
@@ -365,45 +399,80 @@ async def find_blocks(
 ) -> Dict[str, Any]:
     """Find blocks of a specific type near the bot.
 
+    Enhanced version that validates blocks using MinecraftDataService and uses BotController.
+
     Args:
         block_name: Name of block to find (e.g. "oak_log", "stone")
         max_distance: Maximum search distance
         count: Maximum number of blocks to return
 
     Returns:
-        Dictionary with found blocks
+        Dictionary with found blocks and block information
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        logger.info(f"Searching for {block_name} within {max_distance} blocks")
-
-        blocks = await _bridge_manager.execute_command(
-            "world.findBlocks", name=block_name, maxDistance=max_distance, count=count
-        )
-
-        # Convert JSPyBridge Proxy object to Python list
-        if hasattr(blocks, '__len__'):
-            # Already a Python object with len()
-            block_list = list(blocks)
-        else:
-            # Proxy object - convert to list by iterating
-            block_list = []
-            try:
-                # Try to iterate over the proxy object
-                for block in blocks:
-                    block_list.append(block)
-            except TypeError:
-                # If it's not iterable, it might be a single object or empty
-                if blocks:
-                    block_list = [blocks]
+        # Normalize and validate block name using MinecraftDataService
+        normalized_block = block_name
+        block_data = None
+        if _mc_data_service:
+            block_data = _mc_data_service.get_block_by_name(block_name)
+            if not block_data:
+                # Try to find similar block names
+                all_blocks = _mc_data_service.get_all_blocks()
+                similar_blocks = [b for b in all_blocks if block_name.lower() in b.get("name", "").lower()]
+                if similar_blocks:
+                    logger.warning(f"Block '{block_name}' not found, searching anyway. Similar blocks: {[b['name'] for b in similar_blocks[:3]]}")
                 else:
-                    block_list = []
+                    logger.warning(f"Unknown block type '{block_name}', searching anyway")
+            else:
+                normalized_block = block_data.get("name", block_name)
+                logger.info(f"Searching for {normalized_block} within {max_distance} blocks")
 
-        return {
+        # Use BotController to find blocks
+        block_list = await _bot_controller.find_blocks(normalized_block, max_distance, count)
+
+        # Convert JSPyBridge Proxy object to Python list if needed
+        if not isinstance(block_list, list):
+            if hasattr(block_list, '__len__'):
+                # Already a Python object with len()
+                block_list = list(block_list)
+            else:
+                # Proxy object - convert to list by iterating
+                converted_list = []
+                try:
+                    # Try to iterate over the proxy object
+                    for block in block_list:
+                        converted_list.append(block)
+                    block_list = converted_list
+                except TypeError:
+                    # If it's not iterable, it might be a single object or empty
+                    if block_list:
+                        block_list = [block_list]
+                    else:
+                        block_list = []
+
+        response = {
             "status": "success",
-            "block_type": block_name,
+            "block_type": normalized_block,
+            "original_query": block_name,
             "count": len(block_list),
             "positions": block_list,
+            "search_radius": max_distance
         }
+        
+        # Add enriched block data if available
+        if block_data:
+            response["block_data"] = {
+                "hardness": block_data.get("hardness", 0),
+                "material": block_data.get("material", "unknown"),
+                "drops": block_data.get("drops", []),
+                "transparent": block_data.get("transparent", False)
+            }
+            
+        logger.info(f"Found {len(block_list)} {normalized_block} blocks within {max_distance} blocks")
+        return response
 
     except Exception as e:
         logger.error(f"Block search failed: {e}")
@@ -430,37 +499,115 @@ async def get_nearby_players(tool_context: Optional[ToolContext] = None) -> Dict
 
 async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Get current inventory contents.
+    
+    Enhanced version that provides rich item information from MinecraftDataService.
 
     Returns:
-        Dictionary with inventory items
+        Dictionary with inventory items and enriched data
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        items = await _bridge_manager.get_inventory()
+        items = await _bot_controller.get_inventory_items()
 
-        # Organize by item type
+        # Organize by item type with enhanced data
         inventory_summary = {}
+        enriched_items = []
+        item_categories = {"tools": [], "weapons": [], "armor": [], "blocks": [], "food": [], "materials": [], "other": []}
+        craftable_items = []
+        
         for item in items:
             name = item["name"]
+            count = item["count"]
+            
+            # Basic summary
             if name not in inventory_summary:
                 inventory_summary[name] = 0
-            inventory_summary[name] += item["count"]
+            inventory_summary[name] += count
+
+            # Enrich with MinecraftDataService data
+            enriched_item = item.copy()
+            if _mc_data_service:
+                item_data = _mc_data_service.get_item_by_name(name)
+                if item_data:
+                    enriched_item["item_data"] = {
+                        "stack_size": item_data.get("stackSize", 64),
+                        "max_durability": item_data.get("maxDurability", None),
+                        "creative_tab": item_data.get("creative_tab", "misc"),
+                        "material": item_data.get("material", "unknown")
+                    }
+                    
+                    # Categorize items
+                    if "sword" in name or "bow" in name or "crossbow" in name or "trident" in name:
+                        item_categories["weapons"].append({"name": name, "count": count})
+                    elif any(tool in name for tool in ["pickaxe", "axe", "shovel", "hoe", "shears"]):
+                        item_categories["tools"].append({"name": name, "count": count})
+                    elif any(armor in name for armor in ["helmet", "chestplate", "leggings", "boots"]):
+                        item_categories["armor"].append({"name": name, "count": count})
+                    elif any(food in name for food in ["bread", "apple", "meat", "fish", "stew", "cake"]) or "food" in item_data.get("category", ""):
+                        item_categories["food"].append({"name": name, "count": count})
+                    elif "block" in item_data.get("type", "") or name.endswith("_block"):
+                        item_categories["blocks"].append({"name": name, "count": count})
+                    elif any(material in name for material in ["ingot", "gem", "dust", "nugget", "stick", "string", "leather"]):
+                        item_categories["materials"].append({"name": name, "count": count})
+                    else:
+                        item_categories["other"].append({"name": name, "count": count})
+                        
+                # Check what can be crafted with this item
+                recipes = _mc_data_service.get_recipes_for_item_name(name)
+                if recipes:
+                    for recipe in recipes[:3]:  # Limit to first 3 recipes
+                        result_item = recipe.get("result", {}).get("name", "unknown")
+                        if result_item not in [c["result"] for c in craftable_items]:
+                            craftable_items.append({
+                                "ingredient": name,
+                                "result": result_item,
+                                "result_count": recipe.get("result", {}).get("count", 1)
+                            })
+                            
+            enriched_items.append(enriched_item)
+
+        # Calculate inventory statistics
+        total_items = sum(item["count"] for item in items)
+        unique_items = len(inventory_summary)
+        
+        # Identify valuable items
+        valuable_items = []
+        if _mc_data_service:
+            for name, count in inventory_summary.items():
+                item_data = _mc_data_service.get_item_by_name(name)
+                if item_data:
+                    # Consider items valuable if they're rare materials or tools
+                    if any(valuable in name for valuable in ["diamond", "netherite", "gold", "emerald", "enchanted"]):
+                        valuable_items.append({"name": name, "count": count, "type": "precious_material"})
+                    elif item_data.get("maxDurability", 0) > 100:  # Durable tools/weapons
+                        valuable_items.append({"name": name, "count": count, "type": "durable_tool"})
 
         result = {
             "status": "success",
-            "items": items,
+            "items": enriched_items,
             "summary": inventory_summary,
-            "total_items": sum(item["count"] for item in items),
+            "statistics": {
+                "total_items": total_items,
+                "unique_items": unique_items,
+                "inventory_slots_used": len(items)
+            },
+            "categories": {k: v for k, v in item_categories.items() if v},  # Only include non-empty categories
+            "valuable_items": valuable_items,
+            "craftable_with_inventory": craftable_items[:10]  # Limit to 10 most relevant
         }
         
         # Save structured inventory data to session state if tool_context is provided
         if tool_context and hasattr(tool_context, 'state'):
             tool_context.state['minecraft_inventory'] = {
-                'items': items,
+                'items': enriched_items,
                 'summary': inventory_summary,
-                'total_items': result['total_items'],
+                'statistics': result['statistics'],
+                'categories': result['categories'],
                 'timestamp': __import__('time').time()
             }
-            logger.info("Saved inventory data to session state")
+            logger.info("Saved enriched inventory data to session state")
         
         return result
 
@@ -481,154 +628,195 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
 async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Craft an item using available materials.
 
+    Enhanced version that validates recipes using MinecraftDataService and uses BotController.
+
     Args:
         recipe: Name of item to craft
         count: Number to craft
 
     Returns:
-        Dictionary with craft result
+        Dictionary with craft result and recipe information
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
         logger.info(f"Attempting to craft {count} {recipe}")
 
-        # Execute craft command through bridge
-        result = await _bridge_manager.execute_command("craft", recipe=recipe, count=count)
+        # Get and validate recipe using MinecraftDataService
+        recipe_data = None
+        normalized_recipe = recipe
+        if _mc_data_service:
+            # First try to get recipe by result item name
+            recipes = _mc_data_service.get_recipes_for_item(recipe)
+            if recipes:
+                recipe_data = recipes[0]  # Use first recipe found
+                normalized_recipe = recipe_data.get("result", {}).get("name", recipe)
+                logger.info(f"Found recipe for {normalized_recipe}")
+            else:
+                # Try to find similar recipe names
+                all_recipes = _mc_data_service.get_all_recipes()
+                similar_recipes = []
+                for r in all_recipes:
+                    result_name = r.get("result", {}).get("name", "")
+                    if recipe.lower() in result_name.lower():
+                        similar_recipes.append(result_name)
+                
+                if similar_recipes:
+                    return {
+                        "status": "error",
+                        "error": f"Recipe '{recipe}' not found. Similar recipes: {similar_recipes[:5]}"
+                    }
+                else:
+                    logger.warning(f"No recipe found for '{recipe}', attempting to craft anyway")
+
+        # Check inventory before crafting
+        inventory = await _bot_controller.get_inventory_items()
+        inventory_summary = {}
+        for item in inventory:
+            name = item["name"]
+            inventory_summary[name] = inventory_summary.get(name, 0) + item["count"]
+
+        # Validate ingredients if we have recipe data
+        missing_materials = {}
+        if recipe_data and _mc_data_service:
+            ingredients = recipe_data.get("ingredients", [])
+            for ingredient in ingredients:
+                if isinstance(ingredient, dict):
+                    # Handle complex ingredient definitions
+                    if "item" in ingredient:
+                        required_item = ingredient["item"]
+                        required_count = ingredient.get("count", 1) * count
+                        available_count = inventory_summary.get(required_item, 0)
+                        if available_count < required_count:
+                            missing_materials[required_item] = required_count - available_count
+                    elif "tag" in ingredient:
+                        # Handle tag-based ingredients (e.g., #minecraft:planks)
+                        tag = ingredient["tag"]
+                        required_count = ingredient.get("count", 1) * count
+                        # For now, we'll simplify and check for common items
+                        if "planks" in tag:
+                            planks_items = [name for name in inventory_summary.keys() if "planks" in name]
+                            total_planks = sum(inventory_summary[name] for name in planks_items)
+                            if total_planks < required_count:
+                                missing_materials["planks (any type)"] = required_count - total_planks
+                elif isinstance(ingredient, str):
+                    # Simple string ingredient
+                    required_count = count
+                    available_count = inventory_summary.get(ingredient, 0)
+                    if available_count < required_count:
+                        missing_materials[ingredient] = required_count - available_count
+
+            if missing_materials:
+                response = {
+                    "status": "error", 
+                    "error": f"Insufficient materials to craft {count} {recipe}",
+                    "missing_materials": missing_materials,
+                    "current_inventory": inventory_summary
+                }
+                if recipe_data:
+                    response["recipe_info"] = {
+                        "ingredients": ingredients,
+                        "result_count": recipe_data.get("result", {}).get("count", 1)
+                    }
+                return response
+
+        # Attempt to craft using the existing bridge command
+        # Note: This still uses the bridge command temporarily until we implement
+        # a full BotController crafting method
+        from ..bridge.bridge_manager import BridgeManager
+        bridge_manager = _bot_controller.bridge_manager_instance
+        result = await bridge_manager.execute_command("craft", recipe=normalized_recipe, count=count)
         
-        # Check if result is valid
+        # Handle craft result with enhanced error reporting
         if result is None:
             logger.error("Craft command returned None")
             return {
                 "status": "error",
-                "error": "Craft command failed - no response from bot"
+                "error": "Craft command failed - no response from bot",
+                "recipe_attempted": normalized_recipe
             }
         
-        logger.debug(f"Craft result type: {type(result)}, hasattr success: {hasattr(result, 'success') if result else 'N/A'}")
+        # Handle JSPyBridge proxy objects and dict results
+        success = False
+        crafted_count = 0
+        error_msg = None
         
-        # Handle JSPyBridge Proxy objects
         if hasattr(result, 'success'):
-            # Access proxy properties directly
             success = result.success
-            if success:
-                crafted_count = result.crafted if hasattr(result, 'crafted') else 0
-                logger.info(f"Successfully crafted {crafted_count} {recipe}")
-                return {
-                    "status": "success",
-                    "crafted": recipe,
-                    "count": crafted_count
-                }
-            else:
-                # Handle crafting failure
-                error_msg = result.error if hasattr(result, 'error') else f"Failed to craft {recipe}"
-                missing_materials = result.missing_materials if hasattr(result, 'missing_materials') else {}
-                
-                # Convert JSPyBridge proxy to dict if needed
-                if missing_materials and not isinstance(missing_materials, dict):
-                    # Try to convert proxy object to dict
-                    try:
-                        # JSPyBridge proxy objects need special handling
-                        missing_dict = {}
-                        
-                        # Get the string representation to find what properties exist
-                        proxy_str = str(missing_materials)
-                        logger.debug(f"Missing materials proxy: {proxy_str}")
-                        
-                        # Extract properties from the proxy representation
-                        # The format is typically: <Proxy(dict) {'item': count, ...}>
-                        import re
-                        match = re.search(r'\{([^}]+)\}', proxy_str)
-                        if match:
-                            content = match.group(1)
-                            # Parse key-value pairs
-                            for pair in content.split(','):
-                                if ':' in pair:
-                                    key, value = pair.split(':', 1)
-                                    key = key.strip().strip("'").strip('"')
-                                    value = value.strip()
-                                    try:
-                                        missing_dict[key] = int(value)
-                                    except ValueError:
-                                        missing_dict[key] = value
-                        
-                        # If parsing failed, try direct attribute access for common items
-                        if not missing_dict:
-                            common_materials = ['planks', 'oak_planks', 'birch_planks', 'spruce_planks', 
-                                              'stick', 'sticks', 'oak_log', 'birch_log', 'cobblestone', 
-                                              'iron_ingot', 'gold_ingot', 'diamond']
-                            for material in common_materials:
-                                if hasattr(missing_materials, material):
-                                    missing_dict[material] = getattr(missing_materials, material)
-                        
-                        # If we found something, use it
-                        if missing_dict:
-                            missing_materials = missing_dict
-                        else:
-                            missing_materials = {"unknown": "Check inventory for required materials"}
-                            
-                    except Exception as e:
-                        logger.debug(f"Failed to convert missing_materials proxy: {e}")
-                        missing_materials = {"unknown": "Unable to determine missing materials"}
-                
-                logger.error(f"Crafting failed: {error_msg}")
-                
-                response = {
-                    "status": "error",
-                    "error": error_msg
-                }
-                
-                # Include missing materials if provided by the bot
-                if missing_materials:
-                    response["missing_materials"] = missing_materials
-                    
-                return response
-        
-        # Fallback for dict-like results
-        elif isinstance(result, dict) and "success" in result:
-            if result.get("success", False):
-                crafted_count = result.get("crafted", 0)
-                logger.info(f"Successfully crafted {crafted_count} {recipe}")
-                return {
-                    "status": "success",
-                    "crafted": recipe,
-                    "count": crafted_count
-                }
-            else:
-                # Handle dict failure  
-                error_msg = result.get("error", f"Failed to craft {recipe}")
-                missing_materials = result.get("missing_materials", {})
-                
-                logger.error(f"Crafting failed: {error_msg}")
-                
-                response = {
-                    "status": "error",
-                    "error": error_msg
-                }
-                
-                # Include missing materials if provided by the bot
-                if missing_materials:
-                    response["missing_materials"] = missing_materials
-                    
-                return response
-        else:
-            # Unexpected result format
-            logger.error(f"Unexpected craft result format: {type(result)}")
-            return {
-                "status": "error",
-                "error": f"Unexpected result format from craft command: {type(result)}"
+            crafted_count = result.crafted if hasattr(result, 'crafted') else 0
+            error_msg = result.error if hasattr(result, 'error') else None
+        elif isinstance(result, dict):
+            success = result.get("success", False)
+            crafted_count = result.get("crafted", 0)
+            error_msg = result.get("error", None)
+
+        if success:
+            logger.info(f"Successfully crafted {crafted_count} {normalized_recipe}")
+            response = {
+                "status": "success",
+                "crafted": normalized_recipe,
+                "count": crafted_count,
+                "original_request": recipe
             }
+            
+            # Add enriched recipe data if available
+            if recipe_data:
+                response["recipe_data"] = {
+                    "ingredients": recipe_data.get("ingredients", []),
+                    "result_count": recipe_data.get("result", {}).get("count", 1),
+                    "requires_crafting_table": len(recipe_data.get("ingredients", [])) > 4
+                }
+                
+            return response
+        else:
+            # Crafting failed
+            if not error_msg:
+                error_msg = f"Failed to craft {normalized_recipe}"
+                
+            response = {
+                "status": "error",
+                "error": error_msg,
+                "recipe_attempted": normalized_recipe,
+                "current_inventory": inventory_summary
+            }
+            
+            # Add recipe suggestions for common failures
+            if _mc_data_service and ("materials" in error_msg.lower() or "ingredients" in error_msg.lower()):
+                if recipe_data:
+                    response["required_ingredients"] = recipe_data.get("ingredients", [])
+                    
+            return response
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Crafting exception: {error_msg}", exc_info=True)
         
-        # Try to extract meaningful error information
-        return {
+        response = {
             "status": "error",
-            "error": f"Crafting failed: {error_msg}"
+            "error": f"Crafting failed: {error_msg}",
+            "recipe_attempted": recipe
         }
+        
+        # Add helpful suggestions
+        if _mc_data_service:
+            all_recipes = _mc_data_service.get_all_recipes()
+            similar_recipes = []
+            for r in all_recipes:
+                result_name = r.get("result", {}).get("name", "")
+                if any(word in result_name.lower() for word in recipe.lower().split()):
+                    similar_recipes.append(result_name)
+            
+            if similar_recipes:
+                response["suggested_recipes"] = similar_recipes[:5]
+                
+        return response
 
 
 async def send_chat(message: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Send a chat message.
+
+    Enhanced version that uses BotController.
 
     Args:
         message: Message to send
@@ -636,32 +824,35 @@ async def send_chat(message: str, tool_context: Optional[ToolContext] = None) ->
     Returns:
         Dictionary with send result
     """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+        
     try:
-        await _bridge_manager.chat(message)
-
-        return {"status": "success", "message": message}
+        result = await _bot_controller.chat(message)
+        
+        if result.get("status") == "success":
+            return {"status": "success", "message": message}
+        else:
+            return result
 
     except Exception as e:
         logger.error(f"Chat failed: {e}")
         return {"status": "error", "error": str(e)}
 
 
-def create_mineflayer_tools(bridge_manager, mc_data_service=None) -> List:
-    """Create all Mineflayer tools for ADK agents.
+def create_mineflayer_tools(bot_controller: BotController, mc_data_service: MinecraftDataService) -> List:
+    """Create enhanced Mineflayer tools with BotController and MinecraftDataService integration.
 
     Args:
-        bridge_manager: BridgeManager instance
-        mc_data_service: MinecraftDataService instance (optional)
+        bot_controller: BotController instance
+        mc_data_service: MinecraftDataService instance
 
     Returns:
         List of tool functions (ADK will automatically wrap them)
     """
-    # Set the global bridge manager
-    _set_bridge_manager(bridge_manager)
-    
-    # Set the minecraft data service if provided
-    if mc_data_service:
-        _set_minecraft_data_service(mc_data_service)
+    # Set the global references
+    _set_bot_controller(bot_controller)
+    _set_minecraft_data_service(mc_data_service)
 
     # Return list of tool functions - ADK automatically creates FunctionTool objects
     return [

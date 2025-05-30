@@ -9,11 +9,13 @@ from google.adk.tools.tool_context import ToolContext
 from .mineflayer_tools import create_mineflayer_tools
 from ..agents.state_schema import StateKeys, ResultStatus, create_gather_result, create_craft_result
 from ..logging_config import get_logger
+from ..minecraft_bot_controller import BotController
+from ..minecraft_data_service import MinecraftDataService
 
 logger = get_logger(__name__)
 
 
-def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
+def create_gatherer_tools(bot_controller: BotController, mc_data_service: MinecraftDataService) -> List[Any]:
     """Create enhanced tools for GathererAgent with state management
     
     Args:
@@ -24,7 +26,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         List of tools enhanced for gathering operations
     """
     # Get base tools
-    base_tools = create_mineflayer_tools(bridge_manager, mc_data_service)
+    base_tools = create_mineflayer_tools(bot_controller, mc_data_service)
     
     # Create tool name mapping for easy lookup
     tool_map = {tool.__name__: tool for tool in base_tools}
@@ -39,7 +41,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         async def find_blocks_enhanced(block_name: str, max_distance: int = 32, count: int = 1,
                                       tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
             """Enhanced find_blocks that updates gathering state"""
-            result = await original_find_blocks(block_name, max_distance, count)
+            result = await original_find_blocks(block_name, max_distance, count, tool_context)
             
             # Update state with found blocks
             if tool_context and result.get("status") == "success":
@@ -63,7 +65,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         async def dig_block_enhanced(x: int, y: int, z: int,
                                     tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
             """Enhanced dig_block that tracks gathering progress"""
-            result = await original_dig_block(x, y, z)
+            result = await original_dig_block(x, y, z, tool_context)
             
             # Update gathering progress
             if tool_context and result.get("status") == "success":
@@ -89,7 +91,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         
         async def get_inventory_enhanced(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
             """Enhanced get_inventory that updates minecraft inventory state"""
-            result = await original_get_inventory()
+            result = await original_get_inventory(tool_context)
             
             # Update state with current inventory
             if tool_context and result.get("status") == "success":
@@ -115,7 +117,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         
         async def get_position_enhanced(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
             """Enhanced get_position that updates minecraft position state"""
-            result = await original_get_position()
+            result = await original_get_position(tool_context)
             
             # Update state with current position
             if tool_context and result.get("status") == "success":
@@ -144,7 +146,7 @@ def create_gatherer_tools(bridge_manager, mc_data_service=None) -> List[Any]:
     return enhanced_tools
 
 
-def create_crafter_tools(bridge_manager, mc_data_service=None) -> List[Any]:
+def create_crafter_tools(bot_controller: BotController, mc_data_service: MinecraftDataService) -> List[Any]:
     """Create enhanced tools for CrafterAgent with state management
     
     Args:
@@ -155,7 +157,7 @@ def create_crafter_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         List of tools enhanced for crafting operations
     """
     # Get base tools
-    base_tools = create_mineflayer_tools(bridge_manager, mc_data_service)
+    base_tools = create_mineflayer_tools(bot_controller, mc_data_service)
     
     # Create tool name mapping
     tool_map = {tool.__name__: tool for tool in base_tools}
@@ -177,7 +179,7 @@ def create_crafter_tools(bridge_manager, mc_data_service=None) -> List[Any]:
                     "requested_count": count
                 }
             
-            result = await original_craft_item(recipe, count)
+            result = await original_craft_item(recipe, count, tool_context)
             
             # Update state based on result
             if tool_context:
@@ -218,7 +220,7 @@ def create_crafter_tools(bridge_manager, mc_data_service=None) -> List[Any]:
         
         async def get_inventory_enhanced(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
             """Enhanced get_inventory for crafting material verification"""
-            result = await original_get_inventory()
+            result = await original_get_inventory(tool_context)
             
             # Update state with inventory for prerequisite checking
             if tool_context and result.get("status") == "success":
