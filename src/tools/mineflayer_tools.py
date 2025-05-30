@@ -626,9 +626,9 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
 
 
 async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
-    """Craft an item using available materials.
+    """Craft an item using available materials with fully generic logic.
 
-    Enhanced version that validates recipes using MinecraftDataService and uses BotController.
+    Uses generic fuzzy matching and recipe selection without any hardcoded item handling.
 
     Args:
         recipe: Name of item to craft
@@ -643,92 +643,120 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
     try:
         logger.info(f"Attempting to craft {count} {recipe}")
 
-        # Get and validate recipe using MinecraftDataService
-        recipe_data = None
-        normalized_recipe = recipe
-        if _mc_data_service:
-            # First try to get recipe by result item name
-            recipes = _mc_data_service.get_recipes_for_item(recipe)
-            if recipes:
-                recipe_data = recipes[0]  # Use first recipe found
-                normalized_recipe = recipe_data.get("result", {}).get("name", recipe)
-                logger.info(f"Found recipe for {normalized_recipe}")
-            else:
-                # Try to find similar recipe names
-                all_recipes = _mc_data_service.get_all_recipes()
-                similar_recipes = []
-                for r in all_recipes:
-                    result_name = r.get("result", {}).get("name", "")
-                    if recipe.lower() in result_name.lower():
-                        similar_recipes.append(result_name)
-                
-                if similar_recipes:
-                    return {
-                        "status": "error",
-                        "error": f"Recipe '{recipe}' not found. Similar recipes: {similar_recipes[:5]}"
-                    }
-                else:
-                    logger.warning(f"No recipe found for '{recipe}', attempting to craft anyway")
-
-        # Check inventory before crafting
+        # Get current inventory
         inventory = await _bot_controller.get_inventory_items()
         inventory_summary = {}
         for item in inventory:
             name = item["name"]
             inventory_summary[name] = inventory_summary.get(name, 0) + item["count"]
 
-        # Validate ingredients if we have recipe data
+        # Generic item resolution
+        normalized_recipe = recipe
+        if _mc_data_service:
+            # First try generic item request handler
+            generic_result = _mc_data_service.handle_generic_item_request(recipe, inventory_summary)
+            if generic_result:
+                normalized_recipe = generic_result
+                logger.info(f"Resolved generic '{recipe}' to specific '{normalized_recipe}'")
+            else:
+                # Use generic normalization and fuzzy matching
+                normalized_recipe = _mc_data_service.normalize_item_name(recipe)
+                if normalized_recipe == recipe:
+                    # If normalization didn't change it, try fuzzy matching
+                    fuzzy_match = _mc_data_service.fuzzy_match_item_name(recipe)
+                    if fuzzy_match:
+                        normalized_recipe = fuzzy_match
+                        logger.info(f"Fuzzy matched '{recipe}' to '{normalized_recipe}'")
+
+        # Generic recipe selection and validation
+        recipe_data = None
+        selected_recipe = None
+        if _mc_data_service:
+            # Use generic recipe selection algorithm
+            selected_recipe = _mc_data_service.select_best_recipe(normalized_recipe, inventory_summary)
+            
+            if not selected_recipe:
+                # No craftable recipe, get recipes for information
+                recipes = _mc_data_service.get_recipes_for_item(normalized_recipe)
+                if recipes:
+                    recipe_data = recipes[0]
+                else:
+                    # Generic recipe suggestion using fuzzy matching
+                    all_recipes = _mc_data_service.get_all_recipes()
+                    suggestions = []
+                    
+                    # Score all recipes by similarity to request
+                    for r in all_recipes:
+                        result_name = r.get("result", {}).get("name", "")
+                        # Generic similarity check
+                        similarity_score = 0
+                        
+                        # Substring matching
+                        if recipe.lower() in result_name.lower():
+                            similarity_score += 0.5
+                        if result_name.lower() in recipe.lower():
+                            similarity_score += 0.3
+                        
+                        # Word overlap
+                        recipe_words = set(recipe.lower().split())
+                        result_words = set(result_name.lower().replace('_', ' ').split())
+                        common_words = recipe_words & result_words
+                        if common_words:
+                            similarity_score += len(common_words) / max(len(recipe_words), len(result_words))
+                        
+                        if similarity_score > 0.3:
+                            suggestions.append((result_name, similarity_score))
+                    
+                    if suggestions:
+                        # Sort by score and take top suggestions
+                        suggestions.sort(key=lambda x: x[1], reverse=True)
+                        similar_recipes = [s[0] for s in suggestions[:10]]
+                        return {
+                            "status": "error",
+                            "error": f"Recipe '{recipe}' not found. Similar recipes: {similar_recipes}"
+                        }
+                    else:
+                        logger.warning(f"No recipe found for '{normalized_recipe}', attempting to craft anyway")
+            else:
+                recipe_data = selected_recipe
+                logger.info(f"Selected best recipe for {normalized_recipe}")
+
+        # Generic material validation
         missing_materials = {}
         if recipe_data and _mc_data_service:
-            ingredients = recipe_data.get("ingredients", [])
-            for ingredient in ingredients:
-                if isinstance(ingredient, dict):
-                    # Handle complex ingredient definitions
-                    if "item" in ingredient:
-                        required_item = ingredient["item"]
-                        required_count = ingredient.get("count", 1) * count
-                        available_count = inventory_summary.get(required_item, 0)
-                        if available_count < required_count:
-                            missing_materials[required_item] = required_count - available_count
-                    elif "tag" in ingredient:
-                        # Handle tag-based ingredients (e.g., #minecraft:planks)
-                        tag = ingredient["tag"]
-                        required_count = ingredient.get("count", 1) * count
-                        # For now, we'll simplify and check for common items
-                        if "planks" in tag:
-                            planks_items = [name for name in inventory_summary.keys() if "planks" in name]
-                            total_planks = sum(inventory_summary[name] for name in planks_items)
-                            if total_planks < required_count:
-                                missing_materials["planks (any type)"] = required_count - total_planks
-                elif isinstance(ingredient, str):
-                    # Simple string ingredient
-                    required_count = count
-                    available_count = inventory_summary.get(ingredient, 0)
-                    if available_count < required_count:
-                        missing_materials[ingredient] = required_count - available_count
+            # Use generic recipe material extraction
+            materials_needed = _mc_data_service.get_recipe_materials(recipe_data)
+            result_count = recipe_data.get("result", {}).get("count", 1)
+            batches_needed = (count + result_count - 1) // result_count
+            
+            # Generic material availability check
+            for material, qty_per_batch in materials_needed.items():
+                total_needed = qty_per_batch * batches_needed
+                available = inventory_summary.get(material, 0)
+                if available < total_needed:
+                    missing_materials[material] = total_needed - available
 
             if missing_materials:
                 response = {
                     "status": "error", 
-                    "error": f"Insufficient materials to craft {count} {recipe}",
+                    "error": f"Insufficient materials to craft {count} {normalized_recipe}",
                     "missing_materials": missing_materials,
-                    "current_inventory": inventory_summary
-                }
-                if recipe_data:
-                    response["recipe_info"] = {
-                        "ingredients": ingredients,
-                        "result_count": recipe_data.get("result", {}).get("count", 1)
+                    "current_inventory": inventory_summary,
+                    "recipe_info": {
+                        "materials_per_craft": materials_needed,
+                        "result_count": result_count,
+                        "batches_needed": batches_needed,
+                        "requires_crafting_table": _mc_data_service.needs_crafting_table(normalized_recipe)
                     }
+                }
                 return response
 
-        # Attempt to craft using the existing bridge command
-        # Note: This still uses the bridge command temporarily until we implement
-        # a full BotController crafting method
+        # Execute craft command
         from ..bridge.bridge_manager import BridgeManager
         bridge_manager = _bot_controller.bridge_manager_instance
         result = await bridge_manager.execute_command("craft", recipe=normalized_recipe, count=count)
         
-        # Handle craft result with enhanced error reporting
+        # Generic result handling
         if result is None:
             logger.error("Craft command returned None")
             return {
@@ -737,19 +765,40 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
                 "recipe_attempted": normalized_recipe
             }
         
-        # Handle JSPyBridge proxy objects and dict results
+        # Generic proxy/dict result extraction
         success = False
         crafted_count = 0
         error_msg = None
         
-        if hasattr(result, 'success'):
-            success = result.success
-            crafted_count = result.crafted if hasattr(result, 'crafted') else 0
-            error_msg = result.error if hasattr(result, 'error') else None
+        # Try to extract result generically
+        if hasattr(result, '__dict__'):
+            # Object with attributes
+            for success_key in ['success', 'successful', 'ok', 'done']:
+                if hasattr(result, success_key):
+                    success = getattr(result, success_key)
+                    break
+            for count_key in ['crafted', 'count', 'amount', 'quantity']:
+                if hasattr(result, count_key):
+                    crafted_count = getattr(result, count_key)
+                    break
+            for error_key in ['error', 'message', 'msg', 'reason']:
+                if hasattr(result, error_key):
+                    error_msg = getattr(result, error_key)
+                    break
         elif isinstance(result, dict):
-            success = result.get("success", False)
-            crafted_count = result.get("crafted", 0)
-            error_msg = result.get("error", None)
+            # Dictionary result
+            for success_key in ['success', 'successful', 'ok', 'done']:
+                if success_key in result:
+                    success = result[success_key]
+                    break
+            for count_key in ['crafted', 'count', 'amount', 'quantity']:
+                if count_key in result:
+                    crafted_count = result[count_key]
+                    break
+            for error_key in ['error', 'message', 'msg', 'reason']:
+                if error_key in result:
+                    error_msg = result[error_key]
+                    break
 
         if success:
             logger.info(f"Successfully crafted {crafted_count} {normalized_recipe}")
@@ -760,12 +809,13 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
                 "original_request": recipe
             }
             
-            # Add enriched recipe data if available
-            if recipe_data:
+            # Add generic recipe data if available
+            if recipe_data and _mc_data_service:
+                materials = _mc_data_service.get_recipe_materials(recipe_data)
                 response["recipe_data"] = {
-                    "ingredients": recipe_data.get("ingredients", []),
+                    "materials": materials,
                     "result_count": recipe_data.get("result", {}).get("count", 1),
-                    "requires_crafting_table": len(recipe_data.get("ingredients", [])) > 4
+                    "requires_crafting_table": _mc_data_service.needs_crafting_table(normalized_recipe)
                 }
                 
             return response
@@ -781,10 +831,21 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
                 "current_inventory": inventory_summary
             }
             
-            # Add recipe suggestions for common failures
-            if _mc_data_service and ("materials" in error_msg.lower() or "ingredients" in error_msg.lower()):
-                if recipe_data:
-                    response["required_ingredients"] = recipe_data.get("ingredients", [])
+            # Add generic recipe info for debugging
+            if recipe_data and _mc_data_service:
+                materials = _mc_data_service.get_recipe_materials(recipe_data)
+                response["recipe_info"] = {
+                    "required_materials": materials,
+                    "result_count": recipe_data.get("result", {}).get("count", 1),
+                    "requires_crafting_table": _mc_data_service.needs_crafting_table(normalized_recipe)
+                }
+                # Generic material shortage calculation
+                missing = {}
+                for mat, qty in materials.items():
+                    if inventory_summary.get(mat, 0) < qty:
+                        missing[mat] = qty - inventory_summary.get(mat, 0)
+                if missing:
+                    response["missing_materials"] = missing
                     
             return response
 
@@ -798,17 +859,30 @@ async def craft_item(recipe: str, count: int, tool_context: Optional[ToolContext
             "recipe_attempted": recipe
         }
         
-        # Add helpful suggestions
+        # Generic recipe suggestions on error
         if _mc_data_service:
-            all_recipes = _mc_data_service.get_all_recipes()
-            similar_recipes = []
-            for r in all_recipes:
-                result_name = r.get("result", {}).get("name", "")
-                if any(word in result_name.lower() for word in recipe.lower().split()):
-                    similar_recipes.append(result_name)
-            
-            if similar_recipes:
-                response["suggested_recipes"] = similar_recipes[:5]
+            try:
+                all_recipes = _mc_data_service.get_all_recipes()
+                suggestions = []
+                
+                # Generic word-based suggestion algorithm
+                recipe_words = set(recipe.lower().replace('_', ' ').split())
+                for r in all_recipes:
+                    result_name = r.get("result", {}).get("name", "")
+                    result_words = set(result_name.lower().replace('_', ' ').split())
+                    
+                    # Calculate word overlap score
+                    common_words = recipe_words & result_words
+                    if common_words:
+                        score = len(common_words) / max(len(recipe_words), len(result_words))
+                        if score > 0.2:
+                            suggestions.append((result_name, score))
+                
+                if suggestions:
+                    suggestions.sort(key=lambda x: x[1], reverse=True)
+                    response["suggested_recipes"] = [s[0] for s in suggestions[:10]]
+            except Exception as suggest_error:
+                logger.debug(f"Could not get recipe suggestions: {suggest_error}")
                 
         return response
 

@@ -297,7 +297,7 @@ class MinecraftDataService:
         return True
     
     def normalize_item_name(self, item_name: str) -> str:
-        """Normalize item names to handle common variations
+        """Normalize item names using generic fuzzy matching
         
         Args:
             item_name: Raw item name from user
@@ -305,24 +305,108 @@ class MinecraftDataService:
         Returns:
             Normalized item name that matches minecraft-data
         """
-        # Handle plurals
-        if item_name == 'sticks':
-            return 'stick'
+        # Basic normalization: lowercase and remove extra spaces
+        normalized = item_name.lower().strip()
         
-        # Handle generic "planks" request
-        if item_name == 'planks':
-            return 'oak_planks'  # Default to oak
+        # Remove common plural suffixes generically
+        if normalized.endswith('s') and len(normalized) > 2:
+            singular = normalized[:-1]
+            # Check if singular form exists
+            if self.get_item_by_name(singular):
+                return singular
         
-        # Handle other common variations
-        name_map = {
-            'wood': 'oak_log',
-            'log': 'oak_log',
-            'stone_brick': 'stone_bricks',
-            'wooden_planks': 'oak_planks',
-            'wood_planks': 'oak_planks'
-        }
+        # Try exact match first
+        if self.get_item_by_name(normalized):
+            return normalized
         
-        return name_map.get(item_name, item_name)
+        # Fuzzy match against all items
+        best_match = self.fuzzy_match_item_name(normalized)
+        if best_match:
+            return best_match
+            
+        return item_name
+    
+    def fuzzy_match_item_name(self, query: str, threshold: float = 0.6) -> Optional[str]:
+        """Find best matching item name using fuzzy string matching
+        
+        Args:
+            query: Search query
+            threshold: Minimum similarity score (0-1)
+            
+        Returns:
+            Best matching item name or None
+        """
+        try:
+            all_items = self.get_all_items()
+            best_match = None
+            best_score = 0
+            
+            query_lower = query.lower()
+            query_words = set(query_lower.split())
+            
+            for item in all_items:
+                item_name = item['name'].lower()
+                item_words = set(item_name.replace('_', ' ').split())
+                
+                # Calculate similarity score
+                score = 0
+                
+                # Exact match
+                if query_lower == item_name:
+                    return item['name']
+                
+                # Substring match
+                if query_lower in item_name:
+                    score += 0.8
+                elif item_name in query_lower:
+                    score += 0.7
+                
+                # Word overlap
+                common_words = query_words & item_words
+                if common_words:
+                    score += len(common_words) / max(len(query_words), len(item_words)) * 0.6
+                
+                # Character similarity (enhanced for typos)
+                # Check character-by-character similarity
+                common_chars = 0
+                for i, char in enumerate(query_lower[:min(len(query_lower), len(item_name))]):
+                    if i < len(item_name) and char == item_name[i]:
+                        common_chars += 1
+                
+                # Check for character transpositions and typos
+                if abs(len(query_lower) - len(item_name)) <= 2:  # Similar length
+                    # Count matching characters regardless of position
+                    query_chars = {}
+                    item_chars = {}
+                    for c in query_lower:
+                        query_chars[c] = query_chars.get(c, 0) + 1
+                    for c in item_name:
+                        item_chars[c] = item_chars.get(c, 0) + 1
+                    
+                    matching_chars = 0
+                    for c, count in query_chars.items():
+                        matching_chars += min(count, item_chars.get(c, 0))
+                    
+                    char_overlap_ratio = matching_chars / max(len(query_lower), len(item_name))
+                    if char_overlap_ratio > 0.8:  # High character overlap
+                        score += char_overlap_ratio * 0.6
+                
+                if query_lower and common_chars > 0:
+                    score += (common_chars / len(query_lower)) * 0.4
+                
+                # Bonus for matching important suffixes/prefixes
+                if query_lower.endswith(item_name.split('_')[-1]) or item_name.endswith(query_lower.split()[-1]):
+                    score += 0.2
+                
+                if score > best_score and score >= threshold:
+                    best_score = score
+                    best_match = item['name']
+            
+            return best_match
+            
+        except Exception as e:
+            logger.error(f"Error in fuzzy matching: {e}")
+            return None
     
     def get_material_for_tool(self, tool_name: str) -> Optional[str]:
         """Get the material type for a tool
@@ -364,3 +448,304 @@ class MinecraftDataService:
         except Exception as e:
             logger.error(f"Error getting all blocks: {e}")
             return []
+    
+    def get_recipes_for_item(self, item_name: str) -> List[Dict[str, Any]]:
+        """Get all recipes that produce the specified item.
+        
+        This is an alias for get_recipes_for_item_name for compatibility.
+        
+        Args:
+            item_name: Item name to find recipes for
+            
+        Returns:
+            List of recipe dicts
+        """
+        return self.get_recipes_for_item_name(item_name)
+    
+    def get_all_recipes(self) -> List[Dict[str, Any]]:
+        """Get all recipes in the game.
+        
+        Returns:
+            List of all recipes with their result items
+        """
+        try:
+            all_recipes = []
+            
+            # Iterate through all recipe entries
+            for item_id_str, recipes in self.mc_data.recipes.items():
+                item_id = int(item_id_str)
+                item = self.get_item_by_id(item_id)
+                
+                if item:
+                    for recipe in recipes:
+                        # Add result item name to recipe for convenience
+                        enriched_recipe = recipe.copy()
+                        enriched_recipe['result']['name'] = item['name']
+                        enriched_recipe['result']['displayName'] = item.get('displayName', item['name'])
+                        all_recipes.append(enriched_recipe)
+            
+            return all_recipes
+        except Exception as e:
+            logger.error(f"Error getting all recipes: {e}")
+            return []
+    
+    def select_best_recipe(self, item_name: str, inventory: Dict[str, int]) -> Optional[Dict[str, Any]]:
+        """Select the best recipe using a generic scoring algorithm
+        
+        Args:
+            item_name: Name of item to craft
+            inventory: Dict mapping item names to counts
+            
+        Returns:
+            Best recipe dict or None if no craftable recipe found
+        """
+        recipes = self.get_recipes_for_item_name(item_name)
+        
+        if not recipes:
+            return None
+        
+        # Score each recipe based on generic criteria
+        scored_recipes = []
+        
+        for recipe in recipes:
+            materials = self.get_recipe_materials(recipe)
+            
+            # Calculate generic scores
+            score_components = {
+                'craftability': 0,      # Can we craft it?
+                'efficiency': 0,        # How many can we craft?
+                 'material_usage': 0,    # How well does it use available materials?
+                'output_value': 0,      # How much does it produce?
+                'simplicity': 0         # How simple is the recipe?
+            }
+            
+            # Check craftability and calculate efficiency
+            can_craft = True
+            max_crafts = float('inf')
+            total_materials_needed = 0
+            total_materials_available = 0
+            
+            for material, needed in materials.items():
+                available = inventory.get(material, 0)
+                total_materials_needed += needed
+                total_materials_available += min(available, needed * 100)  # Cap to avoid overflow
+                
+                if available < needed:
+                    can_craft = False
+                    score_components['craftability'] = -1000  # Heavy penalty
+                    break
+                else:
+                    crafts_possible = available // needed
+                    max_crafts = min(max_crafts, crafts_possible)
+            
+            if can_craft:
+                score_components['craftability'] = 100
+                score_components['efficiency'] = min(max_crafts, 100)  # Cap at 100 to normalize
+                
+                # Material usage efficiency (0-100)
+                if total_materials_needed > 0:
+                    usage_ratio = total_materials_available / (total_materials_needed * max(max_crafts, 1))
+                    score_components['material_usage'] = min(usage_ratio * 50, 100)
+                
+                # Output value (favor recipes that produce more)
+                result_count = recipe.get('result', {}).get('count', 1)
+                score_components['output_value'] = result_count * 10
+                
+                # Simplicity (fewer different materials is simpler)
+                score_components['simplicity'] = max(0, 50 - len(materials) * 10)
+            
+            # Calculate total score with generic weights
+            weights = {
+                'craftability': 10.0,    # Most important - can we make it?
+                'efficiency': 3.0,       # How many can we make?
+                'material_usage': 2.0,   # How well do we use materials?
+                'output_value': 1.5,     # Prefer recipes with more output
+                'simplicity': 0.5        # Slight preference for simpler recipes
+            }
+            
+            total_score = sum(score_components[key] * weights[key] for key in score_components)
+            
+            scored_recipes.append({
+                'recipe': recipe,
+                'score': total_score,
+                'components': score_components
+            })
+        
+        # Sort by score and return best
+        scored_recipes.sort(key=lambda x: x['score'], reverse=True)
+        
+        if scored_recipes and scored_recipes[0]['score'] > 0:
+            logger.debug(f"Selected recipe with score {scored_recipes[0]['score']:.2f}, components: {scored_recipes[0]['components']}")
+            return scored_recipes[0]['recipe']
+        
+        return None
+    
+    def get_recipe_materials(self, recipe: Dict[str, Any]) -> Dict[str, int]:
+        """Extract materials from any recipe format generically
+        
+        Args:
+            recipe: Recipe dict
+            
+        Returns:
+            Dict mapping material names to counts needed
+        """
+        materials = {}
+        
+        # Generic recipe format handlers
+        def process_ingredient(ingredient):
+            """Process any ingredient format generically"""
+            if ingredient is None:
+                return
+                
+            # Handle numeric IDs
+            if isinstance(ingredient, (int, float)):
+                item = self.get_item_by_id(int(ingredient))
+                if item:
+                    materials[item['name']] = materials.get(item['name'], 0) + 1
+            
+            # Handle string names
+            elif isinstance(ingredient, str):
+                materials[ingredient] = materials.get(ingredient, 0) + 1
+            
+            # Handle dict formats
+            elif isinstance(ingredient, dict):
+                # Try various possible keys for item identification
+                item_ref = None
+                for key in ['item', 'id', 'name', 'type']:
+                    if key in ingredient:
+                        item_ref = ingredient[key]
+                        break
+                
+                if item_ref is not None:
+                    # Get count from various possible keys
+                    count = 1
+                    for count_key in ['count', 'amount', 'quantity', 'num']:
+                        if count_key in ingredient:
+                            count = ingredient[count_key]
+                            break
+                    
+                    # Process the item reference
+                    if isinstance(item_ref, (int, float)):
+                        item = self.get_item_by_id(int(item_ref))
+                        if item:
+                            materials[item['name']] = materials.get(item['name'], 0) + count
+                    else:
+                        materials[str(item_ref)] = materials.get(str(item_ref), 0) + count
+            
+            # Handle list formats (alternative ingredients)
+            elif isinstance(ingredient, list):
+                # For alternative ingredients, just process the first one
+                if ingredient:
+                    process_ingredient(ingredient[0])
+        
+        # Process shaped recipes
+        if 'inShape' in recipe:
+            for row in recipe['inShape']:
+                if isinstance(row, list):
+                    for item in row:
+                        process_ingredient(item)
+                else:
+                    process_ingredient(row)
+        
+        # Process shapeless recipes
+        elif 'ingredients' in recipe:
+            ingredients = recipe['ingredients']
+            if isinstance(ingredients, list):
+                for ingredient in ingredients:
+                    process_ingredient(ingredient)
+            else:
+                process_ingredient(ingredients)
+        
+        # Handle other possible recipe formats
+        else:
+            # Check for other common keys
+            for key in ['items', 'materials', 'input', 'inputs', 'requires']:
+                if key in recipe:
+                    value = recipe[key]
+                    if isinstance(value, list):
+                        for item in value:
+                            process_ingredient(item)
+                    elif isinstance(value, dict):
+                        for item_name, count in value.items():
+                            materials[item_name] = materials.get(item_name, 0) + count
+                    else:
+                        process_ingredient(value)
+        
+        return materials
+    
+    def handle_generic_item_request(self, item_type: str, inventory: Dict[str, int]) -> Optional[str]:
+        """Handle generic item requests by finding best matching variant
+        
+        Args:
+            item_type: Generic item type
+            inventory: Current inventory
+            
+        Returns:
+            Specific item name or None
+        """
+        # Normalize the request
+        normalized_type = item_type.lower().strip()
+        
+        # Find all items that could match this generic type
+        all_items = self.get_all_items()
+        matching_items = []
+        
+        for item in all_items:
+            item_name = item['name'].lower()
+            
+            # Score how well this item matches the generic type
+            score = 0
+            
+            # Check if the type is in the item name
+            if normalized_type in item_name:
+                score += 10
+            
+            # Check if item name ends with the type (e.g., "oak_planks" ends with "planks")
+            if item_name.endswith(normalized_type):
+                score += 5
+            
+            # Check if type is a substring after underscore (common pattern)
+            parts = item_name.split('_')
+            if normalized_type in parts:
+                score += 8
+            
+            # Fuzzy match for similar words
+            if any(part.startswith(normalized_type[:3]) for part in parts if len(part) >= 3 and len(normalized_type) >= 3):
+                score += 3
+            
+            if score > 0:
+                # Check inventory availability
+                available = inventory.get(item['name'], 0)
+                
+                matching_items.append({
+                    'name': item['name'],
+                    'score': score,
+                    'available': available,
+                    'has_recipe': len(self.get_recipes_for_item_name(item['name'])) > 0
+                })
+        
+        if not matching_items:
+            return None
+        
+        # Sort by score, then by availability, then by whether it has recipes
+        matching_items.sort(key=lambda x: (
+            x['score'],
+            x['available'],
+            x['has_recipe']
+        ), reverse=True)
+        
+        # Try to find items we already have
+        for match in matching_items:
+            if match['available'] > 0:
+                return match['name']
+        
+        # If we don't have any, check what we can craft
+        for match in matching_items:
+            if match['has_recipe']:
+                # Check if we can craft it
+                best_recipe = self.select_best_recipe(match['name'], inventory)
+                if best_recipe:
+                    return match['name']
+        
+        # Return the best match even if we can't craft it
+        return matching_items[0]['name'] if matching_items else None
