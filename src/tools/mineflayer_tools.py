@@ -282,9 +282,31 @@ async def move_to(x: int, y: int, z: int, timeout: Optional[int] = None, tool_co
                     except asyncio.CancelledError:
                         logger.debug("Progress update task cancelled after movement failure")
                         pass
-                        
-                await _bot_controller.chat("Movement failed - couldn't reach destination")
-                return result
+                
+                # Check if it's a timeout error
+                error_msg = result.get("error", "")
+                if "timeout" in error_msg.lower():
+                    # It's a timeout - get current position for reporting
+                    try:
+                        actual_pos = await _bot_controller.get_position()
+                    except:
+                        actual_pos = {"x": 0, "y": 0, "z": 0}
+                    
+                    # Send specific timeout message
+                    await _bot_controller.chat(f"Movement timed out after {timeout}ms. Try again or increase the timeout.")
+                    
+                    return {
+                        "status": "error",
+                        "error": f"Movement command timed out after {timeout}ms",
+                        "target_position": {"x": x, "y": y, "z": z},
+                        "actual_position": actual_pos,
+                        "timeout_ms": timeout,
+                        "suggestion": "Either call the movement command again or increase MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS"
+                    }
+                else:
+                    # Other failure
+                    await _bot_controller.chat("Movement failed - couldn't reach destination")
+                    return result
 
         except Exception as e:
             # Cancel progress task on any error
