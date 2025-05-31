@@ -35,15 +35,13 @@ WORKFLOW:
 6. Report back to user with updates
 
 STATE KEYS TO MONITOR:
-Progress (check these for status updates):
-- task.gather.progress: GathererAgent current action
-- task.craft.progress: CrafterAgent current action
-
-Results (check these for final outcomes):
+Results (check these for task outcomes):
 - task.gather.result: GathererAgent results
 - task.craft.result: CrafterAgent results
 - minecraft.inventory: Current inventory
 - minecraft.position: Current bot position
+
+Note: State is updated automatically by tools, not by agents directly
 
 MULTI-STEP COORDINATION:
 When task.craft.result contains missing_materials:

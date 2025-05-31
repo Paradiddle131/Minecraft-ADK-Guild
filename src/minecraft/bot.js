@@ -93,11 +93,22 @@ class MinecraftBot {
         // Configure pathfinder movements
         this.movements = new Movements(this.bot);
         this.movements.canDig = true;
-        this.movements.scafoldingBlocks.push(this.bot.registry.itemsByName.cobblestone.id);
-        this.movements.scafoldingBlocks.push(this.bot.registry.itemsByName.dirt.id);
-
+        
+        // Scaffolding blocks will be set from Python via setScaffoldingBlocks
         this.bot.pathfinder.setMovements(this.movements);
         logger.info('Pathfinder configured');
+    }
+    
+    setScaffoldingBlocks(blockNames) {
+        // Set scaffolding blocks from Python data service
+        this.movements.scafoldingBlocks = [];
+        for (const blockName of blockNames) {
+            const block = this.bot.registry.itemsByName[blockName];
+            if (block) {
+                this.movements.scafoldingBlocks.push(block.id);
+            }
+        }
+        logger.info(`Set ${blockNames.length} scaffolding blocks`);
     }
 
     setupEventHandlers() {
@@ -675,11 +686,10 @@ class MinecraftBot {
                     // Handle generic planks request - try to craft from available logs
                     if (itemName === 'planks') {
                         // Find what type of log we have
-                        const logTypes = ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'acacia_log', 'jungle_log', 'mangrove_log', 'cherry_log'];
                         const inventory = this.bot.inventory.items();
 
                         for (const item of inventory) {
-                            if (logTypes.includes(item.name)) {
+                            if (item.name.endsWith('_log')) {
                                 // Determine the plank type based on log type
                                 normalizedName = item.name.replace('_log', '_planks');
                                 logger.info(`Converting generic 'planks' request to '${normalizedName}' based on available ${item.name}`);
@@ -689,9 +699,8 @@ class MinecraftBot {
 
                         // If no logs found, check if we already have some planks
                         if (normalizedName === 'planks') {
-                            const plankTypes = ['oak_planks', 'birch_planks', 'spruce_planks', 'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 'cherry_planks'];
                             for (const item of inventory) {
-                                if (plankTypes.includes(item.name)) {
+                                if (item.name.endsWith('_planks')) {
                                     normalizedName = item.name; // Use existing plank type
                                     logger.info(`Using existing '${normalizedName}' for generic 'planks' request`);
                                     break;

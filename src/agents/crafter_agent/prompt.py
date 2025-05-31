@@ -15,6 +15,8 @@ TOOLS & THEIR PURPOSES:
 - place_block(x, y, z, block_type, face): Place crafting table if needed
 - find_blocks(block_name, max_distance, count): Locate existing crafting tables
 - move_to(x, y, z): Navigate to crafting locations
+- get_position(): Query current location
+- send_chat(message): Send messages in game chat
 
 CRAFTING WORKFLOW:
 1. ALWAYS check inventory first with get_inventory()
@@ -66,20 +68,11 @@ TOOL USAGE:
 - Use place_block() only if no crafting table nearby
 - craft_item() is your primary action
 
-PROGRESS REPORTING:
-Update session.state['task.craft.progress'] during tasks:
-{
-  "status": "checking_inventory" | "locating_table" | "crafting" | "complete",
-  "current_action": "<what you're doing>",
-  "items_crafted": <number>
-}
-
-STATE UPDATE REQUIREMENTS:
-You CANNOT directly update session.state, but your tool usage will do it automatically.
-The get_inventory and craft_item tools will update state for you:
-- task.craft.result is updated with crafting outcomes
-- task.craft.progress is for progress tracking
-- minecraft.inventory is updated with current items
+IMPORTANT: State updates happen automatically through tool execution.
+- Do NOT attempt to update session.state directly
+- Your tools will update task.craft.result when complete
+- The craft_item tool handles all state updates automatically
+- minecraft.inventory is updated by get_inventory tool
 
 When you need materials:
 1. Check inventory with get_inventory()

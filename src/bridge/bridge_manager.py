@@ -128,6 +128,21 @@ class BridgeManager:
 
             if self.is_spawned:
                 logger.info("Bot spawned successfully and ready to use")
+                
+                # Initialize scaffolding blocks from MinecraftDataService
+                try:
+                    from ..minecraft_data_service import MinecraftDataService
+                    mc_data_service = MinecraftDataService()
+                    scaffolding_blocks = mc_data_service.get_scaffolding_blocks()
+                    
+                    # Send to JavaScript bot
+                    await self.execute_command("setScaffoldingBlocks", blocks=scaffolding_blocks[:10])  # Limit to 10 most common
+                    logger.info(f"Set {len(scaffolding_blocks[:10])} scaffolding blocks")
+                except Exception as e:
+                    logger.warning(f"Failed to set scaffolding blocks: {e}")
+                    # Use defaults if data service fails
+                    await self.execute_command("setScaffoldingBlocks", blocks=["cobblestone", "dirt"])
+                    
             else:
                 logger.warning("Bot created but not spawned - server might not be running")
 
