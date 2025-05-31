@@ -72,11 +72,11 @@ class MinecraftBot {
             this.bot.once('spawn', () => {
                 logger.info('Bot spawned');
                 this.setupPathfinder();
-                
+
                 // Emit standardized spawn event using event emitter
                 this.eventEmitter.emitSpawnEvent();
                 logger.info('Emitted minecraft:spawn event via MinecraftEventEmitter');
-                
+
                 resolve();
             });
 
@@ -127,7 +127,7 @@ class MinecraftBot {
         // Position updates (throttled)
         let lastPositionEmit = 0;
         const positionThrottle = 1000; // Emit position max once per second
-        
+
         this.bot.on('move', () => {
             const now = Date.now();
             if (now - lastPositionEmit > positionThrottle) {
@@ -160,12 +160,12 @@ class MinecraftBot {
         const timeEmitThrottle = 30000; // 30 seconds
 
         this.bot.on('weatherUpdate', () => {
-            const currentWeather = this.bot.thunderState ? 'thunder' : 
+            const currentWeather = this.bot.thunderState ? 'thunder' :
                                  this.bot.rainState > 0 ? 'rain' : 'clear';
-            
+
             if (lastWeatherState && lastWeatherState !== currentWeather) {
                 this.eventEmitter.emitWeatherChangeEvent(
-                    lastWeatherState, 
+                    lastWeatherState,
                     currentWeather,
                     this.bot.thunderState > 0,
                     this.bot.rainState > 0
@@ -197,11 +197,11 @@ class MinecraftBot {
         // Entity movement tracking with throttling
         const entityMoveThrottle = new Map(); // entity_id -> last_emit_time
         const entityMoveDelay = 2000; // 2 seconds between entity move events
-        
+
         this.bot.on('entityMoved', (entity) => {
             const now = Date.now();
             const lastEmit = entityMoveThrottle.get(entity.id) || 0;
-            
+
             if (now - lastEmit > entityMoveDelay) {
                 const oldPos = entity.position; // This might need adjustment based on mineflayer API
                 this.eventEmitter.emitEntityMoveEvent(entity, oldPos, entity.position);
@@ -221,11 +221,11 @@ class MinecraftBot {
 
         // Inventory events
         this.bot.on('windowUpdate', (slot, _oldItem, newItem) => {
-            if (slot < this.bot.inventory.inventoryStart || 
+            if (slot < this.bot.inventory.inventoryStart ||
                 slot >= this.bot.inventory.inventoryEnd) {
                 return; // Only track main inventory
             }
-            
+
             const inventorySlot = slot - this.bot.inventory.inventoryStart;
             this.eventEmitter.emitInventoryChangeEvent(inventorySlot, newItem);
         });
@@ -372,21 +372,21 @@ class MinecraftBot {
                 }
                 const goal = new goals.GoalBlock(x, y, z);
                 const startPos = this.bot.entity.position.clone();
-                
+
                 try {
                     // Check if pathfinder is properly loaded
                     if (!this.bot.pathfinder) {
                         throw new Error('Pathfinder plugin not loaded');
                     }
-                    
+
                     const startTime = Date.now();
                     console.log(`Starting pathfinding to (${x}, ${y}, ${z}) from (${startPos.x.toFixed(1)}, ${startPos.y.toFixed(1)}, ${startPos.z.toFixed(1)})`);
-                    
+
                     // Track progress
                     let lastProgressUpdate = 0;
                     let pathStatus = 'computing';
                     let timeoutId = null;
-                    
+
                     // Progress tracking function
                     const progressHandler = (result) => {
                         pathStatus = result.status;
@@ -394,11 +394,11 @@ class MinecraftBot {
                         if (now - lastProgressUpdate > 1000) { // Update every second
                             const currentPos = this.bot.entity.position;
                             const distanceToGoal = Math.sqrt(
-                                Math.pow(currentPos.x - x, 2) + 
-                                Math.pow(currentPos.y - y, 2) + 
+                                Math.pow(currentPos.x - x, 2) +
+                                Math.pow(currentPos.y - y, 2) +
                                 Math.pow(currentPos.z - z, 2)
                             );
-                            
+
                             // Emit progress event
                             if (this.eventEmitter) {
                                 this.eventEmitter.emitMovementProgressEvent({
@@ -413,17 +413,17 @@ class MinecraftBot {
                                     elapsed_time: now - startTime
                                 });
                             }
-                            
+
                             console.log(`Path progress: status=${result.status}, distance=${distanceToGoal.toFixed(1)}`);
                             lastProgressUpdate = now;
                         }
                     };
-                    
+
                     // Attach progress handler to pathfinder, not bot
                     if (this.bot.pathfinder.on) {
                         this.bot.pathfinder.on('path_update', progressHandler);
                     }
-                    
+
                     // Create movement promise
                     const movementPromise = new Promise(async (resolve, reject) => {
                         try {
@@ -433,16 +433,16 @@ class MinecraftBot {
                                 this.bot.pathfinder.stop();
                                 reject(new Error(`Movement timeout after ${timeout}ms`));
                             }, timeout);
-                            
+
                             // Execute goto and wait for completion
                             await this.bot.pathfinder.goto(goal);
-                            
+
                             // Clear timeout on success
                             if (timeoutId) {
                                 clearTimeout(timeoutId);
                                 timeoutId = null;
                             }
-                            
+
                             resolve();
                         } catch (error) {
                             // Clear timeout on error
@@ -453,57 +453,57 @@ class MinecraftBot {
                             reject(error);
                         }
                     });
-                    
+
                     // Wait for movement to complete
                     await movementPromise;
-                    
+
                     // Get actual position after movement
                     const pos = this.bot.entity.position;
                     const distance = Math.sqrt(
-                        Math.pow(pos.x - x, 2) + 
-                        Math.pow(pos.y - y, 2) + 
+                        Math.pow(pos.x - x, 2) +
+                        Math.pow(pos.y - y, 2) +
                         Math.pow(pos.z - z, 2)
                     );
-                    
+
                     const totalTime = Date.now() - startTime;
                     console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
-                    
+
                     // Clean up event listener
                     if (this.bot.pathfinder.removeListener) {
                         this.bot.pathfinder.removeListener('path_update', progressHandler);
                     }
-                    
+
                     return {
                         target: { x, y, z },
-                        actual_position: { 
-                            x: Math.floor(pos.x), 
-                            y: Math.floor(pos.y), 
-                            z: Math.floor(pos.z) 
+                        actual_position: {
+                            x: Math.floor(pos.x),
+                            y: Math.floor(pos.y),
+                            z: Math.floor(pos.z)
                         },
                         distance_to_target: distance,
                         status: 'completed',
                         message: 'Movement completed successfully',
                         duration_ms: totalTime
                     };
-                    
+
                 } catch (error) {
                     console.error(`Pathfinding failed:`, error);
-                    
+
                     // Clean up event listener on error
                     if (this.bot.pathfinder && this.bot.pathfinder.removeListener) {
                         this.bot.pathfinder.removeListener('path_update', progressHandler);
                     }
-                    
+
                     // Get current position even on failure
                     const pos = this.bot.entity.position;
                     const partialDistance = Math.sqrt(
-                        Math.pow(pos.x - startPos.x, 2) + 
-                        Math.pow(pos.y - startPos.y, 2) + 
+                        Math.pow(pos.x - startPos.x, 2) +
+                        Math.pow(pos.y - startPos.y, 2) +
                         Math.pow(pos.z - startPos.z, 2)
                     );
-                    
+
                     const errorMsg = error.message || error.toString();
-                    
+
                     // Check for specific error types
                     if (errorMsg.includes('timeout')) {
                         throw new Error(`Movement timeout: Failed to reach (${x}, ${y}, ${z}) within ${timeout}ms`);
@@ -530,7 +530,7 @@ class MinecraftBot {
             },
 
             'pathfinder.isMoving': async () => {
-                return { 
+                return {
                     isMoving: this.bot.pathfinder.isMoving(),
                     goal: this.bot.pathfinder.goal
                 };
@@ -548,7 +548,7 @@ class MinecraftBot {
             'placeBlock': async ({ x, y, z, face = 'top' }) => {
                 const referenceBlock = this.bot.blockAt(new Vec3(x, y, z));
                 if (!referenceBlock) throw new Error('No block at reference position');
-                
+
                 const faceVector = this.getFaceVector(face);
 
                 await this.bot.placeBlock(referenceBlock, faceVector);
@@ -640,7 +640,7 @@ class MinecraftBot {
             'js_useOnBlock': async ({ x, y, z }) => {
                 const block = this.bot.blockAt(new Vec3(x, y, z));
                 if (!block) throw new Error('No block at position');
-                
+
                 await this.bot.activateBlock(block);
                 return { used_on: { x, y, z } };
             },
@@ -648,7 +648,7 @@ class MinecraftBot {
             'js_attackEntity': async ({ entity_id }) => {
                 const entity = this.bot.entities[entity_id];
                 if (!entity) throw new Error(`Entity ${entity_id} not found`);
-                
+
                 this.bot.attack(entity);
                 return { attacked: entity_id };
             },
@@ -656,7 +656,7 @@ class MinecraftBot {
             'js_dropItem': async ({ item_name, count = null }) => {
                 const item = this.bot.inventory.items().find(i => i.name === item_name);
                 if (!item) throw new Error(`Item ${item_name} not found in inventory`);
-                
+
                 await this.bot.tossStack(item, count);
                 return { dropped: item_name, count: count || item.count };
             },
@@ -665,19 +665,19 @@ class MinecraftBot {
             'craft': async ({ recipe: itemName, count = 1 }) => {
                 try {
                     logger.info(`Attempting to craft ${count} ${itemName}`);
-                    
+
                     // Handle common naming variations
                     let normalizedName = itemName;
-                    
+
                     // Handle plural/singular variations
                     if (itemName === 'sticks') normalizedName = 'stick';
-                    
+
                     // Handle generic planks request - try to craft from available logs
                     if (itemName === 'planks') {
                         // Find what type of log we have
                         const logTypes = ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'acacia_log', 'jungle_log', 'mangrove_log', 'cherry_log'];
                         const inventory = this.bot.inventory.items();
-                        
+
                         for (const item of inventory) {
                             if (logTypes.includes(item.name)) {
                                 // Determine the plank type based on log type
@@ -686,7 +686,7 @@ class MinecraftBot {
                                 break;
                             }
                         }
-                        
+
                         // If no logs found, check if we already have some planks
                         if (normalizedName === 'planks') {
                             const plankTypes = ['oak_planks', 'birch_planks', 'spruce_planks', 'dark_oak_planks', 'acacia_planks', 'jungle_planks', 'mangrove_planks', 'cherry_planks'];
@@ -698,19 +698,19 @@ class MinecraftBot {
                                 }
                             }
                         }
-                        
+
                         // If still no match, default to oak_planks
                         if (normalizedName === 'planks') {
                             normalizedName = 'oak_planks';
                             logger.info(`Defaulting generic 'planks' request to 'oak_planks'`);
                         }
                     }
-                    
+
                     // Handle other common variations
                     if (itemName === 'sticks' || itemName === 'stick') {
                         normalizedName = 'stick';
                     }
-                    
+
                     // Get the item from registry
                     const item = this.bot.registry.itemsByName[normalizedName];
                     if (!item) {
@@ -719,33 +719,33 @@ class MinecraftBot {
                             error: `Unknown item: ${itemName}`
                         };
                     }
-                    
+
                     // Check if we need a crafting table - assume any recipe not craftable in 2x2 needs table
                     // Python MinecraftDataService now determines this
                     let craftingTable = null;
-                    
+
                     // Try to find a crafting table nearby - let Python decide if needed
                     craftingTable = this.bot.findBlock({
                         matching: this.bot.registry.blocksByName.crafting_table.id,
                         maxDistance: 4
                     });
-                    
+
                     // Get recipes for this item
                     const recipes = this.bot.recipesFor(item.id, null, 1, craftingTable);
-                    
+
                     if (!recipes || recipes.length === 0) {
                         return {
                             success: false,
                             error: `No recipe found for ${itemName}`
                         };
                     }
-                    
+
                     // Use the first available recipe
                     const recipe = recipes[0];
-                    
+
                     // Check if we have the required materials
                     const missingMaterials = await this.checkMissingMaterials(recipe, count);
-                    
+
                     if (Object.keys(missingMaterials).length > 0) {
                         return {
                             success: false,
@@ -753,12 +753,12 @@ class MinecraftBot {
                             missing_materials: missingMaterials
                         };
                     }
-                    
+
                     // Actually craft the item
                     try {
                         await this.bot.craft(recipe, count, craftingTable);
                         logger.info(`Successfully crafted ${count} ${itemName}`);
-                        
+
                         return {
                             success: true,
                             crafted: count,
@@ -767,7 +767,7 @@ class MinecraftBot {
                         };
                     } catch (craftError) {
                         logger.error(`Crafting failed for ${itemName}:`, craftError);
-                        
+
                         // Try to provide more specific error info
                         if (craftError.message.includes('materials')) {
                             // Re-check materials for better error reporting
@@ -778,7 +778,7 @@ class MinecraftBot {
                                 missing_materials: missing
                             };
                         }
-                        
+
                         throw craftError;
                     }
 
@@ -817,13 +817,13 @@ class MinecraftBot {
     async checkMissingMaterials(recipe, count = 1) {
         const missing = {};
         const inventory = this.bot.inventory.items();
-        
+
         // Count required materials
         const required = {};
-        
+
         // Handle both shaped and shapeless recipes
         const ingredients = recipe.inShape || recipe.ingredients || [];
-        
+
         for (const row of ingredients) {
             if (Array.isArray(row)) {
                 // Shaped recipe with rows
@@ -845,13 +845,13 @@ class MinecraftBot {
                 }
             }
         }
-        
+
         // Check what we have
         const have = {};
         for (const item of inventory) {
             have[item.name] = (have[item.name] || 0) + item.count;
         }
-        
+
         // Calculate missing
         for (const [itemName, needCount] of Object.entries(required)) {
             const haveCount = have[itemName] || 0;
@@ -859,7 +859,7 @@ class MinecraftBot {
                 missing[itemName] = needCount - haveCount;
             }
         }
-        
+
         return missing;
     }
 

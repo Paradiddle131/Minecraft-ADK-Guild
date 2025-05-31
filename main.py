@@ -3,21 +3,21 @@ Main entry point for the Minecraft Multi-Agent System
 Orchestrates CoordinatorAgent with GathererAgent and CrafterAgent sub-agents
 """
 
-import asyncio
 import argparse
+import asyncio
 import sys
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from src.config import get_config, setup_google_ai_credentials
+from src.agents import CoordinatorAgent, CrafterAgent, GathererAgent
 from src.bridge.bridge_manager import BridgeManager
-from src.tools.agent_tools import create_gatherer_tools, create_crafter_tools
-from src.agents import CoordinatorAgent, GathererAgent, CrafterAgent
-from src.logging_config import setup_logging, get_logger
-from src.minecraft_data_service import MinecraftDataService
+from src.config import get_config, setup_google_ai_credentials
+from src.logging_config import get_logger, setup_logging
 from src.minecraft_bot_controller import BotController
+from src.minecraft_data_service import MinecraftDataService
+from src.tools.agent_tools import create_crafter_tools, create_gatherer_tools
 
 logger = get_logger(__name__)
 
@@ -27,16 +27,16 @@ command_queue = asyncio.Queue()
 
 async def setup_agents(bridge_manager: BridgeManager, config=None):
     """Setup the multi-agent system with coordinator and sub-agents
-    
+
     Args:
         bridge_manager: Initialized BridgeManager for Minecraft interaction
         config: Optional configuration object
-        
+
     Returns:
         Tuple of (coordinator, runner, session_service)
     """
     config = config or get_config()
-    
+
     # Setup Google AI credentials
     try:
         ai_credentials = setup_google_ai_credentials(config)
@@ -44,15 +44,15 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     except ValueError as e:
         logger.error(f"Failed to setup Google AI credentials: {e}")
         sys.exit(1)
-    
+
     # Create session service
     session_service = InMemorySessionService()
-    
+
     # Create shared services
-    minecraft_version = getattr(config, 'minecraft_version', '1.21.1')
+    minecraft_version = getattr(config, "minecraft_version", "1.21.1")
     mc_data_service = MinecraftDataService(minecraft_version)
     bot_controller = BotController(bridge_manager)
-    
+
     # Create sub-agents
     gatherer = GathererAgent(
         name="GathererAgent",
@@ -63,11 +63,11 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         ai_credentials=ai_credentials,
         config=config,
         mc_data_service=mc_data_service,
-        bot_controller=bot_controller
+        bot_controller=bot_controller,
     )
-    
+
     crafter = CrafterAgent(
-        name="CrafterAgent", 
+        name="CrafterAgent",
         model=config.default_model,
         tools=[],  # Tools will be set after agent creation
         session_service=session_service,
@@ -75,17 +75,17 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         ai_credentials=ai_credentials,
         config=config,
         mc_data_service=mc_data_service,
-        bot_controller=bot_controller
+        bot_controller=bot_controller,
     )
-    
+
     # Now create enhanced tools with bot controller and minecraft data service
     gatherer_tools = create_gatherer_tools(gatherer.bot_controller, gatherer.mc_data)
     crafter_tools = create_crafter_tools(crafter.bot_controller, crafter.mc_data)
-    
+
     # Update agents with tools
     gatherer.tools = gatherer_tools
     crafter.tools = crafter_tools
-    
+
     # Create coordinator with sub-agents
     coordinator = CoordinatorAgent(
         name="CoordinatorAgent",
@@ -96,72 +96,57 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
         ai_credentials=ai_credentials,
         config=config,
         mc_data_service=mc_data_service,
-        bot_controller=bot_controller
+        bot_controller=bot_controller,
     )
-    
+
     # Create runner for the coordinator
-    runner = Runner(
-        agent=coordinator.create_agent(),
-        app_name="minecraft_multiagent",
-        session_service=session_service
-    )
-    
+    runner = Runner(agent=coordinator.create_agent(), app_name="minecraft_multiagent", session_service=session_service)
+
     logger.info("Multi-agent system setup complete")
     return coordinator, runner, session_service
 
 
 async def initialize_session(session_service: InMemorySessionService):
     """Initialize the persistent session
-    
+
     Args:
         session_service: Session service for state management
-        
+
     Returns:
         Session object
     """
     session = await session_service.create_session(
-        app_name="minecraft_multiagent",
-        user_id="player",
-        session_id="interactive_session"
+        app_name="minecraft_multiagent", user_id="player", session_id="interactive_session"
     )
     logger.info("Created new session for interactive mode")
-    
+
     return session
 
 
 async def process_command(command: str, runner: Runner, session):
     """Process a single command
-    
+
     Args:
         command: User command to process
         runner: ADK Runner instance
         session: Current session object
-        
+
     Returns:
         Agent response string
     """
     logger.info(f"Processing command: {command}")
-    
+
     # Create user message
-    user_content = types.Content(
-        role='user',
-        parts=[types.Part(text=command)]
-    )
-    
+    user_content = types.Content(role="user", parts=[types.Part(text=command)])
+
     # Execute through runner
     final_response = ""
-    
+
     try:
-        async for event in runner.run_async(
-            user_id="player",
-            session_id=session.id,
-            new_message=user_content
-        ):
+        async for event in runner.run_async(user_id="player", session_id=session.id, new_message=user_content):
             if event.is_final_response() and event.content:
-                final_response = ''.join(
-                    part.text or '' for part in event.content.parts
-                )
-        
+                final_response = "".join(part.text or "" for part in event.content.parts)
+
         logger.info(f"Command processed successfully: {command}")
         return final_response
     except Exception as e:
@@ -172,28 +157,28 @@ async def process_command(command: str, runner: Runner, session):
 async def command_processor(runner: Runner, session):
     """Background task to process commands from the queue"""
     logger.info("Starting command processor task")
-    
+
     while True:
         try:
             # Wait for command from queue
             command = await command_queue.get()
             logger.debug(f"Got command from queue: {command}")
-            
+
             # Process the command
             response = await process_command(command, runner, session)
-            
+
             # Print response
             if response:
                 print(f"\n{response}\n")
-            
+
             # Mark task as done
             command_queue.task_done()
-            
+
             # Log queue status
             queue_size = command_queue.qsize()
             if queue_size > 0:
                 logger.info(f"Commands remaining in queue: {queue_size}")
-                
+
         except asyncio.CancelledError:
             logger.info("Command processor cancelled")
             break
@@ -203,91 +188,80 @@ async def command_processor(runner: Runner, session):
 
 def parse_args():
     """Parse command line arguments
-    
+
     Returns:
         Parsed arguments
     """
-    parser = argparse.ArgumentParser(
-        description="Minecraft Multi-Agent System - Coordinate agents for complex tasks"
-    )
+    parser = argparse.ArgumentParser(description="Minecraft Multi-Agent System - Coordinate agents for complex tasks")
     parser.add_argument(
-        "command",
-        nargs="?",
-        help="Command to execute (e.g., 'gather 3 oak logs', 'craft wooden pickaxe')"
+        "command", nargs="?", help="Command to execute (e.g., 'gather 3 oak logs', 'craft wooden pickaxe')"
     )
-    parser.add_argument(
-        "--interactive", "-i",
-        action="store_true",
-        help="Run in interactive mode"
-    )
+    parser.add_argument("--interactive", "-i", action="store_true", help="Run in interactive mode")
     return parser.parse_args()
 
 
 async def main():
     """Main entry point for the multi-agent system"""
     args = parse_args()
-    
+
     # Load configuration
     config = get_config()
-    
+
     # Setup logging with config
     setup_logging(
         log_level=config.log_level,
         log_file=config.log_file,
         console_output=True,
         json_format=config.log_json_format,
-        google_log_level=config.google_log_level
+        google_log_level=config.google_log_level,
     )
-    
+
     logger.info("Starting Minecraft Multi-Agent System")
-    
+
     # Initialize bridge manager
     bridge = BridgeManager(agent_config=config)
-    
+
     try:
         logger.info("Initializing connection to Minecraft...")
         await bridge.initialize()
-        
+
         # Setup agents
         _, runner, session_service = await setup_agents(bridge, config)
-        
+
         # Initialize session
         session = await initialize_session(session_service)
-        
+
         if args.interactive:
             # Interactive mode with command queue
             logger.info("Starting interactive mode. Type 'exit' to quit.")
-            
+
             # Start command processor task
             logger.info("Creating command processor task...")
             processor_task = asyncio.create_task(command_processor(runner, session))
             logger.info(f"Command processor task created: {processor_task}")
-            
+
             try:
                 # Create a queue for user input
                 import threading
-                
+
                 input_queue = asyncio.Queue()
-                
+
                 # Get the running event loop
                 loop = asyncio.get_running_loop()
-                
+
                 def read_input():
                     """Read input in a separate thread"""
                     while True:
                         try:
                             line = input("\nMinecraft Agent> ").strip()
-                            asyncio.run_coroutine_threadsafe(
-                                input_queue.put(line),
-                                loop
-                            )
+                            asyncio.run_coroutine_threadsafe(input_queue.put(line), loop)
                         except EOFError:
                             break
-                
+
                 # Start input thread
                 input_thread = threading.Thread(target=read_input, daemon=True)
                 input_thread.start()
-                
+
                 while True:
                     try:
                         # Get user input with timeout to allow other tasks to run
@@ -295,31 +269,31 @@ async def main():
                             command = await asyncio.wait_for(input_queue.get(), timeout=0.1)
                         except asyncio.TimeoutError:
                             continue
-                        
-                        if command.lower() in ['exit', 'quit', 'q']:
+
+                        if command.lower() in ["exit", "quit", "q"]:
                             break
-                            
+
                         if not command:
                             continue
-                            
-                        if command.lower() == 'status':
+
+                        if command.lower() == "status":
                             # Show queue status
                             queue_size = command_queue.qsize()
-                            print(f"\nQueue Status:")
+                            print("\nQueue Status:")
                             print(f"  Commands in queue: {queue_size}")
                             continue
-                            
+
                         # Add command to queue
                         await command_queue.put(command)
                         logger.info(f"Added command to queue: {command}")
-                        print(f"Command queued for processing.")
-                        
+                        print("Command queued for processing.")
+
                     except KeyboardInterrupt:
                         logger.info("Exiting interactive mode...")
                         break
                     except Exception as e:
                         logger.error(f"Error handling input: {e}")
-                        
+
             finally:
                 # Cancel processor task
                 processor_task.cancel()
@@ -327,7 +301,7 @@ async def main():
                     await processor_task
                 except asyncio.CancelledError:
                     pass
-                    
+
         elif args.command:
             # Single command mode
             response = await process_command(args.command, runner, session)
@@ -341,7 +315,7 @@ async def main():
             print("  python main.py 'gather 3 oak logs'")
             print("  python main.py 'craft wooden pickaxe'")
             print("  python main.py --interactive")
-            
+
     except Exception as e:
         logger.error(f"Failed to initialize: {e}")
         logger.error("Make sure:")

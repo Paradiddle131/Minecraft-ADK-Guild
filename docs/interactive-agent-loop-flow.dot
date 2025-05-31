@@ -6,106 +6,106 @@ digraph InteractiveAgentLoopFlow {
 
     // Define node styles
     node [fillcolor="#e8f4f8"];
-    
+
     // Step 1: User Input
     subgraph cluster_input {
         label="1. User Input";
         style=filled;
         fillcolor="#f0f8ff";
-        
+
         user [label="User types\ncommand", shape=ellipse, fillcolor="#b3d9ff"];
         check_status [label="Is it\n'status'?", shape=diamond, fillcolor="#cce5ff"];
     }
-    
+
     // Step 2: Queue Management
     subgraph cluster_queue {
         label="2. Queue Management";
         style=filled;
         fillcolor="#ffe5e5";
-        
+
         add_queue [label="Add to\nCommand Queue\n\n📝 task.command_queue", fillcolor="#ffcccc"];
         show_status [label="Display\nQueue Status", fillcolor="#ffcccc"];
     }
-    
+
     // Step 3: Background Processing
     subgraph cluster_process {
         label="3. Background Processor (runs continuously)";
         style=filled;
         fillcolor="#e5ffe5";
         labelloc="t";
-        
+
         check_queue [label="Check Queue\n(every 0.5s)", shape=hexagon, fillcolor="#ccffcc"];
         get_command [label="Get Next\nCommand", fillcolor="#ccffcc"];
         set_processing [label="Mark as\nProcessing\n\n🔄 task.processing=true", fillcolor="#ccffcc"];
     }
-    
+
     // Step 4: Agent Execution
     subgraph cluster_agents {
         label="4. Agent Execution";
         style=filled;
         fillcolor="#f5f0ff";
-        
+
         coordinator [label="Coordinator\nAgent", fillcolor="#e6d9ff"];
         subagents [label="GathererAgent\nor\nCrafterAgent", fillcolor="#d9ccff"];
         tools [label="Execute\nMinecraft\nActions", fillcolor="#ccbfff"];
     }
-    
+
     // Step 5: State Updates
     subgraph cluster_state {
         label="5. State Updates";
         style=filled;
         fillcolor="#ffffcc";
-        
+
         update_state [label="Update State\n\n📊 minecraft.*\n📊 task.*.result", fillcolor="#ffff99"];
         clear_processing [label="Clear Processing\n\n✅ task.processing=false", fillcolor="#ffff99"];
     }
-    
+
     // Step 6: Response
     subgraph cluster_response {
         label="6. Response";
         style=filled;
         fillcolor="#e5f5ff";
-        
+
         display [label="Display\nto User", shape=ellipse, fillcolor="#ccebff"];
     }
-    
+
     // Main flow connections
     user -> check_status [penwidth=2];
     check_status -> add_queue [label="no", penwidth=2];
     check_status -> show_status [label="yes", color="#ff6b6b", penwidth=2];
-    
+
     add_queue -> check_queue [style=dotted, label="triggers", color="#666666"];
-    
+
     check_queue -> get_command [label="has commands", penwidth=2];
     check_queue -> check_queue [label="empty\n(wait)", style=dotted, color="#999999"];
-    
+
     get_command -> set_processing [penwidth=2];
     set_processing -> coordinator [penwidth=2];
-    
+
     coordinator -> subagents [label="delegates", penwidth=2];
     subagents -> tools [penwidth=2];
-    
+
     tools -> update_state [penwidth=2];
     update_state -> clear_processing [penwidth=2];
-    
+
     clear_processing -> display [penwidth=2];
     display -> check_queue [style=dotted, label="loop back", color="#666666"];
-    
+
     show_status -> user [style=dashed, color="#ff6b6b"];
-    
+
     // Persistent Session box with improved positioning
-    session [label="💾 Persistent Session\n'interactive_session'\n\nMaintains:\n• Command queue\n• Processing state\n• Inventory data\n• Task results", 
-             shape=note, 
-             style="filled", 
+    session [label="💾 Persistent Session\n'interactive_session'\n\nMaintains:\n• Command queue\n• Processing state\n• Inventory data\n• Task results",
+             shape=note,
+             style="filled",
              fillcolor="#f0fff0",
              fontsize=10,
              width=2.8];
-    
+
     // Position session centrally
     {rank=same; add_queue; session;}
     add_queue -> session [dir=none, style=dotted];
     update_state -> session [dir=none, style=dotted];
-    
+
     // Legend
     subgraph cluster_legend {
         label="Legend";
@@ -113,7 +113,7 @@ digraph InteractiveAgentLoopFlow {
         fillcolor="#ffffff";
         color="#000000";
         fontsize=12;
-        
+
         // Create invisible nodes for proper alignment
         legend_main [shape=none, label=<
             <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="5" BGCOLOR="white">
