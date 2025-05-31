@@ -94,22 +94,10 @@ class MinecraftBot {
         this.movements = new Movements(this.bot);
         this.movements.canDig = true;
         
-        // Scaffolding blocks will be set from Python via setScaffoldingBlocks
         this.bot.pathfinder.setMovements(this.movements);
         logger.info('Pathfinder configured');
     }
     
-    setScaffoldingBlocks(blockNames) {
-        // Set scaffolding blocks from Python data service
-        this.movements.scafoldingBlocks = [];
-        for (const blockName of blockNames) {
-            const block = this.bot.registry.itemsByName[blockName];
-            if (block) {
-                this.movements.scafoldingBlocks.push(block.id);
-            }
-        }
-        logger.info(`Set ${blockNames.length} scaffolding blocks`);
-    }
 
     setupEventHandlers() {
         // Chat events

@@ -428,7 +428,7 @@ async def find_blocks(
             block_data = _mc_data_service.get_block_by_name(block_type)
             if not block_data:
                 # Try fuzzy matching
-                all_blocks = [b['name'] for b in _mc_data_service.mc_data.blocks_array]
+                all_blocks = [b['name'] for b in _mc_data_service.mc_data.blocks_list]
                 similar = [b for b in all_blocks if block_type.lower() in b.lower()]
                 
                 if similar:
@@ -534,3 +534,23 @@ def get_all_tools():
         "find_blocks": find_blocks,
         "send_chat": send_chat
     }
+
+
+def create_mineflayer_tools(bot_controller: BotController, mc_data_service: MinecraftDataService):
+    """Create mineflayer tools with initialized services"""
+    # Set global references
+    set_bot_controller(bot_controller)
+    set_minecraft_data_service(mc_data_service)
+    
+    # Return tool functions
+    return [
+        move_to,
+        dig_block,
+        place_block,
+        get_inventory,
+        check_inventory,
+        get_position,
+        craft_item,
+        find_blocks,
+        send_chat
+    ]

@@ -276,7 +276,7 @@ class MinecraftDataService:
         """
         try:
             return [
-                block['name'] for block in self.mc_data.blocks_array
+                block['name'] for block in self.mc_data.blocks_list
                 if block['name'].endswith('_log')
             ]
         except Exception as e:
@@ -285,25 +285,6 @@ class MinecraftDataService:
             return ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 
                     'acacia_log', 'dark_oak_log', 'mangrove_log']
     
-    def get_scaffolding_blocks(self) -> List[str]:
-        """Get suitable scaffolding blocks from data
-        
-        Returns:
-            List of block names suitable for scaffolding
-        """
-        try:
-            scaffolding_blocks = []
-            for block in self.mc_data.blocks_array:
-                # Check if block is suitable for scaffolding
-                if (block.get('material') in ['rock', 'dirt', 'wood'] and 
-                    block.get('stackSize', 0) > 1 and
-                    not block.get('transparent', False)):
-                    scaffolding_blocks.append(block['name'])
-            return scaffolding_blocks
-        except Exception as e:
-            logger.error(f"Error getting scaffolding blocks: {e}")
-            # Return common scaffolding blocks as fallback
-            return ['cobblestone', 'dirt', 'oak_planks', 'stone']
     
     def get_plank_for_log(self, log_type: str) -> Optional[str]:
         """Get the plank type that can be crafted from a log type
