@@ -82,7 +82,7 @@ class MinecraftBot {
 
             this.bot.once('error', reject);
 
-            // Timeout after 30 seconds
+            // Timeout after 30 seconds for spawn
             setTimeout(() => reject(new Error('Spawn timeout')), 30000);
         });
 
@@ -266,6 +266,13 @@ class MinecraftBot {
         const legacyEvents = ['error', 'end', 'kicked'];
         legacyEvents.forEach(eventName => {
             this.bot.on(eventName, (...args) => {
+                // Stop pathfinding on disconnect events
+                if (eventName === 'end' || eventName === 'kicked') {
+                    if (this.bot.pathfinder) {
+                        logger.info(`Bot ${eventName} event - stopping pathfinder`);
+                        this.bot.pathfinder.stop();
+                    }
+                }
                 this.handleEvent(eventName, args);
             });
         });
@@ -358,8 +365,13 @@ class MinecraftBot {
     async routeCommand(method, args) {
         const handlers = {
             // Movement commands
-            'pathfinder.goto': async ({ x, y, z, timeout = 30000 }) => {
+            'pathfinder.goto': async ({ x, y, z, timeout }) => {
+                // Timeout must be provided by Python caller
+                if (!timeout) {
+                    throw new Error('Movement timeout not specified - must be provided by caller');
+                }
                 const goal = new goals.GoalBlock(x, y, z);
+                const startPos = this.bot.entity.position.clone();
                 
                 try {
                     // Check if pathfinder is properly loaded
@@ -368,7 +380,6 @@ class MinecraftBot {
                     }
                     
                     const startTime = Date.now();
-                    const startPos = this.bot.entity.position.clone();
                     console.log(`Starting pathfinding to (${x}, ${y}, ${z}) from (${startPos.x.toFixed(1)}, ${startPos.y.toFixed(1)}, ${startPos.z.toFixed(1)})`);
                     
                     // Track progress

@@ -48,27 +48,50 @@ class BotController:
             logger.error(f"Chat failed: {e}")
             return {"status": "error", "error": str(e)}
     
-    async def move_to(self, x: int, y: int, z: int) -> Dict[str, Any]:
+    async def move_to(self, x: int, y: int, z: int, timeout: Optional[int] = None) -> Dict[str, Any]:
         """Move bot to specific coordinates
         
         Args:
             x: Target X coordinate
             y: Target Y coordinate
             z: Target Z coordinate
+            timeout: Optional timeout in milliseconds
             
         Returns:
             Dict with movement result
         """
         try:
-            result = await self.bridge_manager_instance.move_to(x, y, z)
+            result = await self.bridge_manager_instance.move_to(x, y, z, timeout)
+            
+            # Check if the result indicates an error
+            if isinstance(result, dict):
+                # First check if it's an error dict from bridge callback ({"error": "..."})
+                if "error" in result and not result.get("status"):
+                    error_msg = str(result["error"])
+                    # Return error with proper status
+                    return {"status": "error", "error": error_msg}
+                # Check for other error formats
+                elif result.get("status") == "error":
+                    return {"status": "error", "error": result.get("error", "Unknown error")}
+                elif "timeout" in str(result.get("message", "")).lower():
+                    return {"status": "error", "error": result.get("message")}
+                elif "timeout" in str(result.get("error", "")).lower():
+                    return {"status": "error", "error": result.get("error")}
+            
             return {
                 "status": "success",
                 "target": {"x": x, "y": y, "z": z},
                 "result": result
             }
         except Exception as e:
-            logger.error(f"Movement failed: {e}")
-            return {"status": "error", "error": str(e)}
+            error_msg = str(e)
+            logger.error(f"Movement failed: {error_msg}")
+            
+            # Check if it's a timeout error
+            if "timeout" in error_msg.lower():
+                return {"status": "error", "error": f"Movement timed out after {timeout}ms: {error_msg}"}
+            else:
+                return {"status": "error", "error": error_msg}
     
     async def look_at(self, x: int, y: int, z: int) -> Dict[str, Any]:
         """Make bot look at specific coordinates

@@ -2,6 +2,9 @@
 Mineflayer Tools for Google ADK - Wraps Minecraft bot commands as ADK tools
 """
 from typing import Any, Dict, List, Optional
+import asyncio
+import time
+import math
 
 from google.adk.tools import ToolContext
 
@@ -16,6 +19,130 @@ _bot_controller: Optional[BotController] = None
 _mc_data_service: Optional[MinecraftDataService] = None
 
 
+async def _send_movement_progress_updates(
+    bot_controller: BotController,
+    target: Dict[str, float],
+    start_pos: Dict[str, float],
+    start_distance: float
+) -> None:
+    """Send periodic progress updates during movement
+    
+    Args:
+        bot_controller: The bot controller instance
+        target: Target position dict with x, y, z
+        start_pos: Starting position dict with x, y, z
+        start_distance: Initial distance to target
+    """
+    last_distance = start_distance
+    update_interval = 5.0  # 5 seconds between updates
+    update_count = 0
+    max_updates = 12  # Maximum 12 updates (60 seconds total)
+    stuck_count = 0  # Track how many times we haven't moved
+    stuck_threshold = 3  # Consider stuck after 3 updates with no progress
+    
+    try:
+        logger.info(f"Progress update task starting for movement to ({target['x']}, {target['y']}, {target['z']})")
+        
+        # Send immediate test message to verify chat is working
+        test_message = f"Progress tracking started for movement to ({target['x']}, {target['y']}, {target['z']})"
+        logger.info(f"Sending test message: {test_message}")
+        try:
+            await bot_controller.chat(test_message)
+            logger.info("Test message sent successfully")
+        except Exception as e:
+            logger.error(f"Failed to send test message: {e}")
+            return
+        
+        # Send first progress update immediately
+        logger.info("Sending first progress update immediately")
+        try:
+            current_pos = await bot_controller.get_position()
+            distance_to_target = math.sqrt(
+                (target['x'] - current_pos['x']) ** 2 +
+                (target['y'] - current_pos['y']) ** 2 +
+                (target['z'] - current_pos['z']) ** 2
+            )
+            first_message = f"Navigation started - {distance_to_target:.1f} blocks to go"
+            await bot_controller.chat(first_message)
+            logger.info(f"First progress update sent: {first_message}")
+        except Exception as e:
+            logger.error(f"Failed to send first progress update: {e}")
+        
+        while update_count < max_updates:
+            logger.info(f"Progress update loop iteration {update_count + 1}")
+            await asyncio.sleep(update_interval)
+            update_count += 1
+            
+            try:
+                # Check if bot is still connected
+                if not bot_controller.bridge_manager_instance.is_connected:
+                    logger.warning("Bot disconnected, stopping progress updates")
+                    break
+                
+                # Get current position
+                current_pos = await bot_controller.get_position()
+                logger.info(f"Progress update {update_count}: current position {current_pos}")
+                
+                # Calculate distance to target
+                distance_to_target = math.sqrt(
+                    (target['x'] - current_pos['x']) ** 2 +
+                    (target['y'] - current_pos['y']) ** 2 +
+                    (target['z'] - current_pos['z']) ** 2
+                )
+                
+                # Calculate progress
+                progress_made = start_distance - distance_to_target
+                progress_percent = (progress_made / start_distance) * 100 if start_distance > 0 else 0
+                
+                # Send progress update
+                if abs(last_distance - distance_to_target) < 0.5 and last_distance != start_distance:
+                    # Not making much progress, might be stuck
+                    stuck_count += 1
+                    if stuck_count >= stuck_threshold:
+                        message = f"Navigation appears stuck at {distance_to_target:.1f} blocks - may need manual help"
+                    else:
+                        message = f"Navigation progress: {distance_to_target:.1f} blocks remaining (might be finding path around obstacles)"
+                else:
+                    # Normal progress update - reset stuck counter
+                    stuck_count = 0
+                    message = f"Moving... {distance_to_target:.1f} blocks remaining ({progress_percent:.0f}% complete)"
+                
+                logger.info(f"About to send progress update: {message}")
+                await bot_controller.chat(message)
+                logger.info(f"Progress update {update_count} sent successfully, stuck_count={stuck_count}")
+                
+                last_distance = distance_to_target
+                
+                # If we've been stuck too long, stop sending updates
+                if stuck_count >= stuck_threshold + 2:
+                    logger.warning(f"Bot appears stuck after {stuck_count} updates, stopping progress reporting")
+                    break
+                
+                # Stop if we're very close to target (within 2 blocks)
+                if distance_to_target < 2:
+                    logger.info("Progress updates stopping - close to target")
+                    break
+                    
+            except Exception as e:
+                # Don't let position errors stop progress updates
+                logger.error(f"Error in progress update {update_count}: {e}", exc_info=True)
+                message = f"Navigation in progress... (update {update_count})"
+                logger.info(f"Sending fallback progress update: {message}")
+                try:
+                    await bot_controller.chat(message)
+                    logger.info(f"Fallback progress update {update_count} sent successfully")
+                except Exception as chat_error:
+                    logger.error(f"Failed to send fallback message: {chat_error}")
+                
+    except asyncio.CancelledError:
+        # Task was cancelled, this is expected when movement completes
+        logger.info("Progress update task cancelled")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in progress update task: {e}", exc_info=True)
+        raise
+
+
 def _set_bot_controller(controller: BotController):
     """Set the global bot controller for tool functions"""
     global _bot_controller
@@ -28,7 +155,7 @@ def _set_minecraft_data_service(mc_data: MinecraftDataService):
     _mc_data_service = mc_data
 
 
-async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+async def move_to(x: int, y: int, z: int, timeout: Optional[int] = None, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Move bot to specified coordinates using pathfinding.
     
     Enhanced version that uses BotController and provides additional context.
@@ -37,13 +164,24 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
         x: Target X coordinate
         y: Target Y coordinate  
         z: Target Z coordinate
-        timeout: Maximum time in milliseconds to wait for movement (default: 30000ms = 30s)
+        timeout: Maximum time in milliseconds to wait for movement (default from env var)
 
     Returns:
         Dictionary with movement result including actual final position
     """
     if not _bot_controller:
         return {"status": "error", "error": "BotController not initialized"}
+        
+    # Use config for default timeout
+    if timeout is None:
+        # Get timeout from config if available
+        try:
+            from ..config import get_config
+            config = get_config()
+            timeout = config.pathfinder_timeout_ms
+        except Exception:
+            # Fallback to 30 seconds if config fails
+            timeout = 30000
         
     try:
         # Get current position for distance calculation
@@ -56,6 +194,13 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
 
         logger.info(f"Starting movement to ({x}, {y}, {z}), distance: {start_distance:.1f}")
         
+        # Send initial position report to chat
+        initial_message = (
+            f"I'm at ({int(current_pos['x'])}, {int(current_pos['y'])}, {int(current_pos['z'])}) "
+            f"and I'm on my way to ({x}, {y}, {z}). Distance: {start_distance:.1f} blocks"
+        )
+        await _bot_controller.chat(initial_message)
+        
         # Store movement start in state
         if tool_context and hasattr(tool_context, 'state'):
             tool_context.state['temp:movement_in_progress'] = {
@@ -65,36 +210,118 @@ async def move_to(x: int, y: int, z: int, timeout: int = 30000, tool_context: Op
                 'start_distance': start_distance
             }
 
-        # Use BotController for movement
-        result = await _bot_controller.move_to(x, y, z)
-        
-        # Update state based on result
-        if result.get("status") == "success":
-            # Get actual position after movement
-            actual_pos = await _bot_controller.get_position()
+        # Start progress updates immediately for distances > 5 blocks
+        progress_task = None
+        if start_distance > 5:  # Only create progress updates for distances > 5 blocks
+            # Send confirmation message
+            await asyncio.sleep(0.1)  # Small delay to ensure initial message is sent
+            await _bot_controller.chat(f"Starting navigation to ({x}, {y}, {z}) - will update every 5 seconds...")
             
-            # Update position in state
-            if tool_context and hasattr(tool_context, 'state'):
-                tool_context.state['minecraft_position'] = {
-                    'x': actual_pos['x'],
-                    'y': actual_pos['y'], 
-                    'z': actual_pos['z'],
-                    'timestamp': __import__('time').time()
-                }
-                tool_context.state['temp:movement_in_progress'] = None
+            # Create progress update task
+            try:
+                progress_task = asyncio.create_task(
+                    _send_movement_progress_updates(
+                        _bot_controller, 
+                        {'x': x, 'y': y, 'z': z}, 
+                        current_pos,
+                        start_distance
+                    )
+                )
+                logger.info(f"Created progress update task for movement to ({x}, {y}, {z})")
+            except Exception as e:
+                logger.error(f"Failed to create progress update task: {e}")
+                progress_task = None
+
+        try:
+            # Use BotController for movement, passing the timeout
+            result = await _bot_controller.move_to(x, y, z, timeout=timeout)
+            
+            # Cancel progress updates once movement is complete
+            if progress_task and not progress_task.done():
+                logger.info("Cancelling progress update task - movement completed")
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    logger.debug("Progress update task cancelled successfully")
+                    pass
+            
+            # Update state based on result
+            if result.get("status") == "success":
+                # Get actual position after movement
+                actual_pos = await _bot_controller.get_position()
                 
-            return {
-                "status": "success",
-                "target_position": {"x": x, "y": y, "z": z},
-                "actual_position": actual_pos,
-                "distance_traveled": start_distance
-            }
-        else:
-            return result
+                # Send completion message
+                await _bot_controller.chat(
+                    f"Arrived at ({int(actual_pos['x'])}, {int(actual_pos['y'])}, {int(actual_pos['z'])})"
+                )
+                
+                # Update position in state
+                if tool_context and hasattr(tool_context, 'state'):
+                    tool_context.state['minecraft_position'] = {
+                        'x': actual_pos['x'],
+                        'y': actual_pos['y'], 
+                        'z': actual_pos['z'],
+                        'timestamp': __import__('time').time()
+                    }
+                    tool_context.state['temp:movement_in_progress'] = None
+                    
+                return {
+                    "status": "success",
+                    "target_position": {"x": x, "y": y, "z": z},
+                    "actual_position": actual_pos,
+                    "distance_traveled": start_distance
+                }
+            else:
+                # Movement failed
+                if progress_task and not progress_task.done():
+                    logger.info("Cancelling progress update task - movement failed")
+                    progress_task.cancel()
+                    try:
+                        await progress_task
+                    except asyncio.CancelledError:
+                        logger.debug("Progress update task cancelled after movement failure")
+                        pass
+                
+                # Check if it's a timeout error
+                error_msg = result.get("error", "")
+                if "timeout" in error_msg.lower():
+                    # It's a timeout - get current position for reporting
+                    try:
+                        actual_pos = await _bot_controller.get_position()
+                    except:
+                        actual_pos = {"x": 0, "y": 0, "z": 0}
+                    
+                    # Send specific timeout message
+                    await _bot_controller.chat(f"Movement timed out after {timeout}ms. Try again or increase the timeout.")
+                    
+                    return {
+                        "status": "error",
+                        "error": f"Movement command timed out after {timeout}ms",
+                        "target_position": {"x": x, "y": y, "z": z},
+                        "actual_position": actual_pos,
+                        "timeout_ms": timeout,
+                        "suggestion": "Either call the movement command again or increase MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS"
+                    }
+                else:
+                    # Other failure
+                    await _bot_controller.chat("Movement failed - couldn't reach destination")
+                    return result
+
+        except Exception as e:
+            # Cancel progress task on any error
+            if progress_task and not progress_task.done():
+                logger.info("Cancelling progress update task - exception occurred")
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    logger.debug("Progress update task cancelled after exception")
+                    pass
+            raise
 
     except Exception as e:
         logger.error(f"Movement failed: {e}")
-        
         return {"status": "error", "error": str(e)}
 
 

@@ -8,6 +8,8 @@ DELEGATION RULES:
 - Resource operations (mine/collect/find/get blocks/wood/logs) → transfer_to_agent('GathererAgent')
 - Crafting operations (make/craft/create items/stick/tools) → transfer_to_agent('CrafterAgent')  
 - World state queries (inventory/position/location/status/where) → transfer_to_agent('GathererAgent')
+- Movement operations (move/go/come/walk/travel to coordinates/position) → transfer_to_agent('GathererAgent')
+- Navigation requests (come here/go to x,y,z/move to location) → transfer_to_agent('GathererAgent')
 - Requests for items (give me/I need/get me) → analyze what's needed:
   - If raw resource (logs/stone/ore) → transfer_to_agent('GathererAgent')
   - If craftable item (stick/tools/planks) → transfer_to_agent('CrafterAgent')
@@ -17,6 +19,9 @@ UNDERSTANDING REQUESTS:
 - "get me wood" → GathererAgent (wood is gathered)
 - "I need a pickaxe" → CrafterAgent (tools are crafted)
 - "find some iron" → GathererAgent (ores are gathered)
+- "come to -25, 65, -25" → GathererAgent (movement/navigation)
+- "move to coordinates X Y Z" → GathererAgent (movement/navigation)
+- "go to position" → GathererAgent (movement/navigation)
 
 WORKFLOW:
 1. Analyze request to determine task type
