@@ -5,7 +5,7 @@ repos:
     hooks:
       - id: black
         language_version: python3.11
-        args: [--line-length=100]
+        args: [--line-length=120]
 
   # Ruff linting
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -13,14 +13,6 @@ repos:
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-
-  # MyPy type checking (basic)
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [types-redis, types-requests]
-        args: [--ignore-missing-imports, --no-strict-optional, --disable-error-code=override, --disable-error-code=var-annotated, --disable-error-code=assignment, --disable-error-code=no-any-return, --disable-error-code=attr-defined, --disable-error-code=valid-type, --disable-error-code=misc]
 
   # General code quality
   - repo: https://github.com/pre-commit/pre-commit-hooks

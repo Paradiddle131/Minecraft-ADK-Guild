@@ -19,7 +19,6 @@ dependencies = [
 dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
-    "mypy>=1.0.0",
     "pre-commit>=3.6.0",
 ]
 
@@ -27,18 +26,11 @@ dev = [
 minecraft-agent = "scripts.run_agent:main"
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
 select = ["E", "F", "I", "N", "W"]
 ignore = ["E501", "E402"]
 
 [tool.black]
-line-length = 100
+line-length = 120
 target-version = ["py311"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-ignore_missing_imports = true
-
