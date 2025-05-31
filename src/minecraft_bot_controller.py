@@ -68,11 +68,8 @@ class BotController:
                 # First check if it's an error dict from bridge callback ({"error": "..."})
                 if "error" in result and not result.get("status"):
                     error_msg = str(result["error"])
-                    # Check if it's a timeout error
-                    if "timeout" in error_msg.lower():
-                        return {"status": "error", "error": error_msg}
-                    else:
-                        return {"status": "error", "error": error_msg}
+                    # Return error with proper status
+                    return {"status": "error", "error": error_msg}
                 # Check for other error formats
                 elif result.get("status") == "error":
                     return {"status": "error", "error": result.get("error", "Unknown error")}
