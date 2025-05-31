@@ -155,7 +155,7 @@ def _set_minecraft_data_service(mc_data: MinecraftDataService):
     _mc_data_service = mc_data
 
 
-async def move_to(x: int, y: int, z: int, timeout: int = None, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+async def move_to(x: int, y: int, z: int, timeout: Optional[int] = None, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Move bot to specified coordinates using pathfinding.
     
     Enhanced version that uses BotController and provides additional context.
