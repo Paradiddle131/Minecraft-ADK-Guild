@@ -1,17 +1,30 @@
 """
-BotController - Python class that encapsulates all bot actions
+BotController - Hybrid architecture with internal Pydantic validation
 Provides a Python-centric interface for controlling the Minecraft bot
 """
-import logging
-from typing import Any, Dict, List, Optional, Union
+import asyncio
+import math
+from collections import defaultdict
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+
+from pydantic import BaseModel, ValidationError
 
 from .bridge.bridge_manager import BridgeManager
+from .config import get_config
+from .logging_config import get_logger
+from .minecraft_data_service import MinecraftDataService
+from .schemas.bot_commands import *
+from .schemas.bot_responses import *
+from .schemas.progress import *
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+T = TypeVar('T', bound=BaseModel)
 
 
 class BotController:
-    """Python controller for all Minecraft bot actions via BridgeManager"""
+    """Enhanced bot controller with schema validation and consistent error handling"""
 
     _instance = None
     _bridge_manager = None
@@ -23,340 +36,476 @@ class BotController:
         return cls._instance
 
     def __init__(self, bridge_manager_instance: BridgeManager):
-        """Initialize the BotController with a BridgeManager instance
+        """Initialize the BotController with a BridgeManager instance"""
+        if not hasattr(self, "bridge") or self.bridge is not bridge_manager_instance:
+            self.bridge = bridge_manager_instance
+            self.config = get_config()
+            self.mc_data_service = MinecraftDataService()
+            self.active_operations: Dict[str, asyncio.Task] = {}
+            logger.info("Initialized BotController with hybrid architecture")
 
-        Args:
-            bridge_manager_instance: An initialized BridgeManager instance
-        """
-        # Only initialize if not already initialized or bridge manager changed
-        if not hasattr(self, "bridge_manager_instance") or self.bridge_manager_instance is not bridge_manager_instance:
-            self.bridge_manager_instance = bridge_manager_instance
-            logger.info("Initialized BotController")
-
-    async def chat(self, message: str) -> Dict[str, Any]:
-        """Send a chat message
-
-        Args:
-            message: Message to send in chat
-
-        Returns:
-            Dict with send status
-        """
+    async def _execute_command(
+        self,
+        command_schema: Type[BaseModel],
+        response_schema: Type[T],
+        method: str,
+        **kwargs
+    ) -> T:
+        """Generic command execution with schema validation and error handling"""
+        start_time = datetime.now()
+        
         try:
-            await self.bridge_manager_instance.chat(message)
+            # Validate input
+            command = command_schema(**kwargs)
+            command_dict = command.dict(exclude_none=True)
+            
+            # Determine timeout
+            timeout_ms = self._get_timeout_for_method(method, command_dict.get('timeout_ms'))
+            
+            # Execute command
+            result = await self.bridge.execute_command(method, **command_dict)
+            
+            # Handle response
+            response_data = self._process_bridge_response(result, response_schema)
+            
+            # Add execution time
+            execution_time = int((datetime.now() - start_time).total_seconds() * 1000)
+            response_data['execution_time_ms'] = execution_time
+            
+            return response_schema(**response_data)
+            
+        except ValidationError as e:
+            return response_schema(
+                status="error",
+                error_details=ErrorDetails(
+                    error_type="validation",
+                    message=f"Invalid command parameters: {e}",
+                    suggestion="Check command parameters match expected types"
+                )
+            )
+        except asyncio.TimeoutError:
+            elapsed_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            return response_schema(
+                status="timeout",
+                error_details=TimeoutError(
+                    message=f"Command '{method}' timed out",
+                    timeout_ms=timeout_ms,
+                    elapsed_ms=elapsed_ms,
+                    suggestion=f"Retry with longer timeout or check if bot is stuck"
+                )
+            )
+        except Exception as e:
+            error_type = type(e).__name__
+            return response_schema(
+                status="error",
+                error_details=ErrorDetails(
+                    error_type=error_type,
+                    message=str(e),
+                    suggestion=self._get_error_suggestion(error_type, str(e))
+                )
+            )
+    
+    def _get_timeout_for_method(self, method: str, override_timeout: Optional[int]) -> int:
+        """Get appropriate timeout for method"""
+        if override_timeout:
+            return override_timeout
+            
+        timeout_config = self.config.timeouts
+        
+        # Method-specific timeouts
+        timeout_map = {
+            'pathfinder.goto': timeout_config.pathfinder_default_ms,
+            'move_to': timeout_config.pathfinder_default_ms,
+            'craft': timeout_config.long_command_ms,
+            'dig': timeout_config.long_command_ms,
+            'place_block': timeout_config.standard_command_ms,
+            'chat': timeout_config.quick_command_ms,
+            'get_inventory': timeout_config.quick_command_ms,
+            'get_position': timeout_config.quick_command_ms,
+        }
+        
+        return timeout_map.get(method, timeout_config.standard_command_ms)
+    
+    def _process_bridge_response(self, result: Any, response_schema: Type[BaseModel]) -> dict:
+        """Process response from bridge into schema-compatible format"""
+        if isinstance(result, dict):
+            # Check for error responses
+            if 'error' in result and not result.get('status'):
+                # Bridge error format
+                error_msg = str(result['error'])
+                error_data = {
+                    'status': 'error',
+                    'error_details': {
+                        'error_type': 'bridge_error',
+                        'message': error_msg
+                    }
+                }
+                
+                # Check for timeout
+                if 'timeout' in error_msg.lower():
+                    error_data['status'] = 'timeout'
+                    error_data['error_details']['error_type'] = 'timeout'
+                    # Extract timeout duration if possible
+                    import re
+                    timeout_match = re.search(r'(\d+)ms', error_msg)
+                    if timeout_match:
+                        error_data['error_details']['timeout_ms'] = int(timeout_match.group(1))
+                        
+                return error_data
+                
+            # Success or already formatted response
+            return result
+        else:
+            # Non-dict response, wrap it
+            return {'status': 'success', 'result': result}
+    
+    def _get_error_suggestion(self, error_type: str, error_msg: str) -> Optional[str]:
+        """Get helpful suggestion based on error type"""
+        suggestions = {
+            'ConnectionError': "Check if Minecraft server is running and accessible",
+            'ValueError': "Verify the command parameters are correct",
+            'KeyError': "The requested item or block may not exist",
+            'TimeoutError': "Increase timeout or check if bot is stuck",
+        }
+        
+        # Check error message for specific issues
+        if 'inventory full' in error_msg.lower():
+            return "Drop some items to make space in inventory"
+        elif 'too far' in error_msg.lower():
+            return "Move closer to the target location"
+        elif 'no path' in error_msg.lower():
+            return "Target may be unreachable, try a different location"
+            
+        return suggestions.get(error_type)
+    
+    def _is_valid_position(self, x: float, y: float, z: float) -> bool:
+        """Validate if position is within world bounds"""
+        return -30000000 <= x <= 30000000 and -64 <= y <= 320 and -30000000 <= z <= 30000000
+    
+    def _calculate_distance(self, pos1: Dict[str, float], pos2: Dict[str, float]) -> float:
+        """Calculate 3D distance between two positions"""
+        return math.sqrt(
+            (pos2['x'] - pos1['x'])**2 +
+            (pos2['y'] - pos1['y'])**2 +
+            (pos2['z'] - pos1['z'])**2
+        )
+    
+    # Public methods with Pydantic validation
+    async def chat(self, message: str) -> Dict[str, Any]:
+        """Send a chat message - returns simple dict for ADK compatibility"""
+        try:
+            await self.bridge.chat(message)
             return {"status": "success", "message": message}
         except Exception as e:
             logger.error(f"Chat failed: {e}")
             return {"status": "error", "error": str(e)}
-
-    async def move_to(self, x: int, y: int, z: int, timeout: Optional[int] = None) -> Dict[str, Any]:
-        """Move bot to specific coordinates
-
-        Args:
-            x: Target X coordinate
-            y: Target Y coordinate
-            z: Target Z coordinate
-            timeout: Optional timeout in milliseconds
-
-        Returns:
-            Dict with movement result
-        """
+    
+    async def move_to(self, x: float, y: float, z: float, 
+                     timeout_ms: Optional[int] = None,
+                     sprint: bool = False) -> MoveToResponse:
+        """Internal method returning Pydantic model"""
+        command = MoveToCommand(
+            position=Position3D(x=x, y=y, z=z),
+            timeout_ms=timeout_ms,
+            sprint=sprint
+        )
+        
+        # Validate position
+        if not self._is_valid_position(x, y, z):
+            return MoveToResponse(
+                status="error",
+                target_position=command.position,
+                error_details=ErrorDetails(
+                    error_type="invalid_position",
+                    message="Position is outside world bounds"
+                )
+            )
+        
+        # Get current position for distance calculation
         try:
-            result = await self.bridge_manager_instance.move_to(x, y, z, timeout)
-
-            # Check if the result indicates an error
-            if isinstance(result, dict):
-                # First check if it's an error dict from bridge callback ({"error": "..."})
-                if "error" in result and not result.get("status"):
-                    error_msg = str(result["error"])
-                    # Return error with proper status
-                    return {"status": "error", "error": error_msg}
-                # Check for other error formats
-                elif result.get("status") == "error":
-                    return {"status": "error", "error": result.get("error", "Unknown error")}
-                elif "timeout" in str(result.get("message", "")).lower():
-                    return {"status": "error", "error": result.get("message")}
-                elif "timeout" in str(result.get("error", "")).lower():
-                    return {"status": "error", "error": result.get("error")}
-
-            return {"status": "success", "target": {"x": x, "y": y, "z": z}, "result": result}
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Movement failed: {error_msg}")
-
-            # Check if it's a timeout error
-            if "timeout" in error_msg.lower():
-                return {"status": "error", "error": f"Movement timed out after {timeout}ms: {error_msg}"}
+            current_pos_response = await self.get_position()
+            start_pos = None
+            if current_pos_response.status == "success" and current_pos_response.position:
+                start_pos = current_pos_response.position.dict()
+        except:
+            start_pos = None
+        
+        # Execute movement
+        try:
+            timeout = timeout_ms or self.config.timeouts.pathfinder_default_ms
+            result = await self.bridge.move_to(int(x), int(y), int(z), timeout=timeout)
+            
+            if result.get('status') == 'success':
+                final_pos = result.get('position', {'x': x, 'y': y, 'z': z})
+                distance = None
+                if start_pos:
+                    distance = self._calculate_distance(start_pos, final_pos)
+                
+                return MoveToResponse(
+                    status="success",
+                    target_position=command.position,
+                    actual_position=Position3D(**final_pos),
+                    distance_traveled=distance
+                )
             else:
-                return {"status": "error", "error": error_msg}
-
-    async def look_at(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Make bot look at specific coordinates
-
-        Args:
-            x: X coordinate to look at
-            y: Y coordinate to look at
-            z: Z coordinate to look at
-
-        Returns:
-            Dict with result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_lookAt", x=x, y=y, z=z)
-            return {"status": "success", "looking_at": {"x": x, "y": y, "z": z}}
+                return MoveToResponse(
+                    status="error",
+                    target_position=command.position,
+                    error_details=ErrorDetails(
+                        error_type="movement_failed",
+                        message=result.get('error', 'Unknown movement error')
+                    )
+                )
         except Exception as e:
-            logger.error(f"Look at failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def start_digging(self, block_position: List[int]) -> Dict[str, Any]:
-        """Start digging a block
-
-        Args:
-            block_position: [x, y, z] position of block to dig
-
-        Returns:
-            Dict with dig result
-        """
-        try:
-            x, y, z = block_position
-            result = await self.bridge_manager_instance.dig_block(x, y, z)
-            return {"status": "success", "position": {"x": x, "y": y, "z": z}, "result": result}
-        except Exception as e:
-            logger.error(f"Start digging failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def stop_digging(self) -> Dict[str, Any]:
-        """Stop current digging action
-
-        Returns:
-            Dict with result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_stopDigging")
-            return {"status": "success", "stopped": True}
-        except Exception as e:
-            logger.error(f"Stop digging failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def place_block(self, reference_block_position: List[int], face_vector: List[int]) -> Dict[str, Any]:
-        """Place a block
-
-        Args:
-            reference_block_position: [x, y, z] position of reference block
-            face_vector: [x, y, z] face vector for placement direction
-
-        Returns:
-            Dict with placement result
-        """
-        try:
-            x, y, z = reference_block_position
-            # Convert face vector to face name
-            face_map = {
-                (0, 1, 0): "top",
-                (0, -1, 0): "bottom",
-                (0, 0, -1): "north",
-                (0, 0, 1): "south",
-                (1, 0, 0): "east",
-                (-1, 0, 0): "west",
-            }
-            face = face_map.get(tuple(face_vector), "top")
-
-            result = await self.bridge_manager_instance.place_block(x, y, z, face)
-            return {"status": "success", "position": {"x": x, "y": y, "z": z}, "face": face, "result": result}
-        except Exception as e:
-            logger.error(f"Place block failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def equip_item(self, item_name_or_id: Union[str, int], destination: str) -> Dict[str, Any]:
-        """Equip an item
-
-        Args:
-            item_name_or_id: Item name or numeric ID
-            destination: Where to equip ('hand', 'head', 'torso', 'legs', 'feet', 'off-hand')
-
-        Returns:
-            Dict with equip result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command(
-                "inventory.equip", item=item_name_or_id, destination=destination
+            return MoveToResponse(
+                status="error",
+                target_position=command.position,
+                error_details=ErrorDetails(
+                    error_type=type(e).__name__,
+                    message=str(e)
+                )
             )
-            return {"status": "success", "equipped": item_name_or_id, "destination": destination}
-        except Exception as e:
-            logger.error(f"Equip item failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def craft_item(
-        self, recipe_id: int, count: int, crafting_table_block_or_none: Optional[Any]
-    ) -> Dict[str, Any]:
-        """Craft an item using a recipe
-
-        Args:
-            recipe_id: Recipe ID to use
-            count: Number of items to craft
-            crafting_table_block_or_none: Crafting table block object or None for inventory crafting
-
-        Returns:
-            Dict with craft result
-        """
+    
+    async def dig_block(self, x: float, y: float, z: float,
+                       force_look: bool = True,
+                       dig_face: Optional[str] = None) -> DigBlockResponse:
+        """Dig a block with consistent error handling"""
+        return await self._execute_command(
+            DigBlockCommand,
+            DigBlockResponse,
+            'dig',
+            position={'x': x, 'y': y, 'z': z},
+            force_look=force_look,
+            dig_face=dig_face
+        )
+    
+    async def place_block(self, x: float, y: float, z: float,
+                         face: str, item_name: str) -> PlaceBlockResponse:
+        """Place a block"""
+        return await self._execute_command(
+            PlaceBlockCommand,
+            PlaceBlockResponse,
+            'place_block',
+            reference_position={'x': x, 'y': y, 'z': z},
+            face=face,
+            item_name=item_name
+        )
+    
+    async def craft_item(self, recipe_name: str, count: int = 1,
+                        crafting_table: Optional[Dict[str, float]] = None) -> CraftItemResponse:
+        """Craft items"""
+        ct_pos = None
+        if crafting_table:
+            ct_pos = Position3D(**crafting_table)
+            
+        return await self._execute_command(
+            CraftItemCommand,
+            CraftItemResponse,
+            'craft',
+            recipe_name=recipe_name,
+            count=count,
+            crafting_table=ct_pos
+        )
+    
+    async def get_inventory(self) -> GetInventoryResponse:
+        """Get inventory with rich categorization"""
         try:
-            # For now, use the existing craft command which takes item name
-            # This would need to be updated to use recipe_id in the future
-            result = await self.bridge_manager_instance.execute_command("craft", recipe="unknown", count=count)
-            return result
+            result = await self.bridge.execute_command('inventory.items')
+            
+            if isinstance(result, list):
+                # Process inventory items
+                items = []
+                for item in result:
+                    try:
+                        items.append(InventoryItem(
+                            name=item.get('name', 'unknown'),
+                            count=item.get('count', 0),
+                            slot=item.get('slot', -1),
+                            metadata=item.get('metadata')
+                        ))
+                    except Exception as e:
+                        logger.error(f"Failed to parse inventory item: {e}")
+                
+                # Categorize items
+                categories = self._categorize_items(items)
+                empty_slots = 36 - len(items)  # Standard inventory size
+                
+                return GetInventoryResponse(
+                    status='success',
+                    items=items,
+                    empty_slots=empty_slots,
+                    categories=categories
+                )
+            else:
+                return GetInventoryResponse(
+                    status='error',
+                    items=[],
+                    empty_slots=0,
+                    error_details=ErrorDetails(
+                        error_type='invalid_response',
+                        message='Invalid inventory response format'
+                    )
+                )
+                
         except Exception as e:
-            logger.error(f"Craft item failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def get_inventory_items(self) -> List[Dict[str, Any]]:
-        """Get current inventory items
-
-        Returns:
-            List of inventory item dicts
-        """
-        try:
-            items = await self.bridge_manager_instance.get_inventory()
-            return items if isinstance(items, list) else []
-        except Exception as e:
-            logger.error(f"Get inventory failed: {e}")
-            return []
-
-    async def get_position(self) -> Dict[str, float]:
-        """Get current bot position
-
-        Returns:
-            Dict with x, y, z coordinates
-        """
-        try:
-            return await self.bridge_manager_instance.get_position()
-        except Exception as e:
-            logger.error(f"Get position failed: {e}")
-            return {"x": 0, "y": 0, "z": 0}
-
-    async def get_health(self) -> Dict[str, float]:
-        """Get bot health, food, and saturation
-
-        Returns:
-            Dict with health stats
-        """
-        try:
-            result = await self.bridge_manager_instance.execute_command("entity.health")
-            return result
-        except Exception as e:
-            logger.error(f"Get health failed: {e}")
-            return {"health": 0, "food": 0, "saturation": 0}
-
-    async def find_blocks(self, block_name: str, max_distance: int = 64, count: int = 1) -> List[Dict[str, int]]:
-        """Find blocks of a specific type
-
-        Args:
-            block_name: Name of block to find
-            max_distance: Maximum search distance
-            count: Maximum number of blocks to return
-
-        Returns:
-            List of block positions
-        """
-        try:
-            result = await self.bridge_manager_instance.execute_command(
-                "world.findBlocks", name=block_name, maxDistance=max_distance, count=count
+            return GetInventoryResponse(
+                status='error',
+                items=[],
+                empty_slots=0,
+                error_details=ErrorDetails(
+                    error_type=type(e).__name__,
+                    message=str(e)
+                )
             )
-            return result if isinstance(result, list) else []
-        except Exception as e:
-            logger.error(f"Find blocks failed: {e}")
-            return []
-
-    async def get_block_at(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Get block information at specific position
-
-        Args:
-            x: X coordinate
-            y: Y coordinate
-            z: Z coordinate
-
-        Returns:
-            Dict with block information
-        """
+    
+    async def get_position(self) -> GetPositionResponse:
+        """Get bot's current position"""
         try:
-            result = await self.bridge_manager_instance.execute_command("world.getBlock", x=x, y=y, z=z)
-            return result
+            result = await self.bridge.execute_command('bot.entity.position')
+            
+            if isinstance(result, dict) and all(k in result for k in ['x', 'y', 'z']):
+                return GetPositionResponse(
+                    status='success',
+                    position=Position3D(**result)
+                )
+            else:
+                return GetPositionResponse(
+                    status='error',
+                    error_details=ErrorDetails(
+                        error_type='invalid_response',
+                        message='Invalid position response format'
+                    )
+                )
         except Exception as e:
-            logger.error(f"Get block failed: {e}")
-            return {"name": "unknown", "type": -1}
-
-    async def activate_item(self) -> Dict[str, Any]:
-        """Activate/use the currently held item
-
-        Returns:
-            Dict with activation result
-        """
+            return GetPositionResponse(
+                status='error',
+                error_details=ErrorDetails(
+                    error_type=type(e).__name__,
+                    message=str(e)
+                )
+            )
+    
+    def _categorize_items(self, items: List[InventoryItem]) -> Dict[str, List[InventoryItem]]:
+        """Categorize items using minecraft_data service"""
+        categories = defaultdict(list)
+        
+        for item in items:
+            # Use minecraft_data service for categorization
+            item_data = self.mc_data_service.get_item_by_name(item.name)
+            if item_data:
+                # Derive category from minecraft_data properties
+                if item_data.get('stackSize') == 1 and 'durability' in item_data:
+                    if any(tool in item.name.lower() for tool in ['axe', 'pickaxe', 'shovel', 'hoe']):
+                        categories['tools'].append(item)
+                    elif any(weapon in item.name.lower() for weapon in ['sword', 'bow', 'crossbow']):
+                        categories['weapons'].append(item)
+                    elif any(armor in item.name.lower() for armor in ['helmet', 'chestplate', 'leggings', 'boots']):
+                        categories['armor'].append(item)
+                elif self.mc_data_service.is_block(item.name):
+                    categories['blocks'].append(item)
+                elif self.mc_data_service.is_food(item.name):
+                    categories['food'].append(item)
+                else:
+                    categories['materials'].append(item)
+            else:
+                categories['other'].append(item)
+        
+        return dict(categories)
+    
+    # Progress tracking methods
+    async def move_to_with_progress(
+        self, 
+        x: float, 
+        y: float, 
+        z: float,
+        timeout_ms: Optional[int] = None,
+        progress_callback: Optional[Callable[[ProgressUpdate], None]] = None
+    ) -> MoveToResponse:
+        """Move with progress tracking"""
+        operation_id = f"move_{datetime.now().timestamp()}"
+        start_pos_response = await self.get_position()
+        
+        if start_pos_response.status != "success" or not start_pos_response.position:
+            return MoveToResponse(
+                status="error",
+                target_position=Position3D(x=x, y=y, z=z),
+                error_details=ErrorDetails(
+                    error_type="position_error",
+                    message="Could not get current position"
+                )
+            )
+        
+        start_pos = start_pos_response.position
+        start_time = datetime.now()
+        
+        # Calculate total distance
+        total_distance = math.sqrt(
+            (x - start_pos.x)**2 + 
+            (y - start_pos.y)**2 + 
+            (z - start_pos.z)**2
+        )
+        
+        async def track_progress():
+            """Background task to track movement progress"""
+            while operation_id in self.active_operations:
+                try:
+                    current_pos_response = await self.get_position()
+                    if current_pos_response.status != "success":
+                        continue
+                        
+                    current_pos = current_pos_response.position
+                    elapsed_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                    
+                    # Calculate progress
+                    distance_remaining = math.sqrt(
+                        (x - current_pos.x)**2 +
+                        (y - current_pos.y)**2 +
+                        (z - current_pos.z)**2
+                    )
+                    progress_percent = ((total_distance - distance_remaining) / total_distance) * 100 if total_distance > 0 else 100
+                    
+                    # Create progress update
+                    progress = PathfindingProgress(
+                        operation_id=operation_id,
+                        progress_percent=min(progress_percent, 100),
+                        status_message=f"{distance_remaining:.0f} blocks left",
+                        elapsed_ms=elapsed_ms,
+                        current_position=current_pos,
+                        target_position=Position3D(x=x, y=y, z=z),
+                        distance_remaining=distance_remaining
+                    )
+                    
+                    # Send progress update
+                    if progress_callback:
+                        progress_callback(progress)
+                    
+                    # Also send to chat for visibility (concise message)
+                    await self.chat(progress.status_message)
+                    
+                    await asyncio.sleep(5)  # Update every 5 seconds
+                    
+                except Exception as e:
+                    logger.error(f"Progress tracking error: {e}")
+                    break
+        
+        # Start progress tracking
+        progress_task = asyncio.create_task(track_progress())
+        self.active_operations[operation_id] = progress_task
+        
         try:
-            await self.bridge_manager_instance.execute_command("js_activateItem")
-            return {"status": "success", "activated": True}
+            # Execute movement
+            response = await self.move_to(x, y, z, timeout_ms)
+            
+            # Stop progress tracking
+            if operation_id in self.active_operations:
+                self.active_operations[operation_id].cancel()
+                del self.active_operations[operation_id]
+                
+            return response
+            
         except Exception as e:
-            logger.error(f"Activate item failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def deactivate_item(self) -> Dict[str, Any]:
-        """Deactivate the currently held item
-
-        Returns:
-            Dict with deactivation result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_deactivateItem")
-            return {"status": "success", "deactivated": True}
-        except Exception as e:
-            logger.error(f"Deactivate item failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def use_on_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
-        """Use held item on a block (right-click)
-
-        Args:
-            x: Block X coordinate
-            y: Block Y coordinate
-            z: Block Z coordinate
-
-        Returns:
-            Dict with use result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_useOnBlock", x=x, y=y, z=z)
-            return {"status": "success", "used_on": {"x": x, "y": y, "z": z}}
-        except Exception as e:
-            logger.error(f"Use on block failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def attack_entity(self, entity_id: int) -> Dict[str, Any]:
-        """Attack an entity
-
-        Args:
-            entity_id: ID of entity to attack
-
-        Returns:
-            Dict with attack result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_attackEntity", entity_id=entity_id)
-            return {"status": "success", "attacked": entity_id}
-        except Exception as e:
-            logger.error(f"Attack entity failed: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def drop_item(self, item_name: str, count: Optional[int] = None) -> Dict[str, Any]:
-        """Drop items from inventory
-
-        Args:
-            item_name: Name of item to drop
-            count: Number to drop (None = all)
-
-        Returns:
-            Dict with drop result
-        """
-        try:
-            await self.bridge_manager_instance.execute_command("js_dropItem", item_name=item_name, count=count)
-            return {"status": "success", "dropped": item_name, "count": count}
-        except Exception as e:
-            logger.error(f"Drop item failed: {e}")
-            return {"status": "error", "error": str(e)}
+            # Ensure progress tracking stops on error
+            if operation_id in self.active_operations:
+                self.active_operations[operation_id].cancel()
+                del self.active_operations[operation_id]
+            raise

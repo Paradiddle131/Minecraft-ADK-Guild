@@ -183,6 +183,53 @@ class MinecraftDataService:
             return []
         return self.get_recipes_for_item_id(item["id"])
 
+    def is_block(self, item_name: str) -> bool:
+        """Check if an item is a placeable block
+        
+        Args:
+            item_name: Name of the item
+            
+        Returns:
+            True if item is a block, False otherwise
+        """
+        try:
+            # Check blocks registry
+            block = self.get_block_by_name(item_name)
+            if block:
+                return True
+                
+            # Some items are blocks but have different names
+            # Check if item can be placed as a block
+            item = self.get_item_by_name(item_name)
+            if item and item_name.endswith('_block'):
+                return True
+                
+            return False
+        except Exception as e:
+            logger.error(f"Error checking if '{item_name}' is block: {e}")
+            return False
+    
+    def is_food(self, item_name: str) -> bool:
+        """Check if an item is food
+        
+        Args:
+            item_name: Name of the item
+            
+        Returns:
+            True if item is food, False otherwise
+        """
+        try:
+            # Check foods registry
+            food_data = self.mc_data.foods_name.get(item_name)
+            if food_data:
+                return True
+                
+            # Check if item has food points
+            return self.get_food_points(item_name) > 0
+        except Exception as e:
+            logger.error(f"Error checking if '{item_name}' is food: {e}")
+            return False
+
     def get_food_points(self, item_name: str) -> int:
         """Get food points for a food item
 
@@ -197,31 +244,7 @@ class MinecraftDataService:
             food_data = self.mc_data.foods_name.get(item_name)
             if food_data:
                 return food_data.get("foodPoints", 0)
-
-            # Fallback to hardcoded values for common foods
-            food_values = {
-                "apple": 4,
-                "bread": 5,
-                "cooked_beef": 8,
-                "cooked_chicken": 6,
-                "cooked_porkchop": 8,
-                "golden_apple": 4,
-                "cookie": 2,
-                "cake": 14,
-                "cooked_mutton": 6,
-                "cooked_rabbit": 5,
-                "cooked_salmon": 6,
-                "cooked_cod": 5,
-                "baked_potato": 5,
-                "carrot": 3,
-                "potato": 1,
-                "melon_slice": 2,
-                "pumpkin_pie": 8,
-                "steak": 8,
-                "sweet_berries": 2,
-                "glow_berries": 2,
-            }
-            return food_values.get(item_name, 0)
+            return 0
         except Exception as e:
             logger.error(f"Error getting food points for '{item_name}': {e}")
             return 0
@@ -240,34 +263,65 @@ class MinecraftDataService:
             food_data = self.mc_data.foods_name.get(item_name)
             if food_data:
                 return food_data.get("saturation", 0.0)
-
-            # Fallback to hardcoded values
-            saturation_values = {
-                "apple": 2.4,
-                "bread": 6.0,
-                "cooked_beef": 12.8,
-                "cooked_chicken": 7.2,
-                "cooked_porkchop": 12.8,
-                "golden_apple": 9.6,
-                "cookie": 0.4,
-                "cake": 0.4,
-                "cooked_mutton": 9.6,
-                "cooked_rabbit": 6.0,
-                "cooked_salmon": 9.6,
-                "cooked_cod": 6.0,
-                "baked_potato": 6.0,
-                "carrot": 3.6,
-                "potato": 0.6,
-                "melon_slice": 1.2,
-                "pumpkin_pie": 4.8,
-                "steak": 12.8,
-                "sweet_berries": 0.4,
-                "glow_berries": 0.4,
-            }
-            return saturation_values.get(item_name, 0.0)
+            return 0.0
         except Exception as e:
             logger.error(f"Error getting saturation for '{item_name}': {e}")
             return 0.0
+
+    def get_all_log_types(self) -> List[str]:
+        """Get all log types from minecraft_data
+        
+        Returns:
+            List of log block names
+        """
+        try:
+            return [
+                block['name'] for block in self.mc_data.blocks_array
+                if block['name'].endswith('_log')
+            ]
+        except Exception as e:
+            logger.error(f"Error getting log types: {e}")
+            # Return common log types as fallback
+            return ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 
+                    'acacia_log', 'dark_oak_log', 'mangrove_log']
+    
+    def get_scaffolding_blocks(self) -> List[str]:
+        """Get suitable scaffolding blocks from data
+        
+        Returns:
+            List of block names suitable for scaffolding
+        """
+        try:
+            scaffolding_blocks = []
+            for block in self.mc_data.blocks_array:
+                # Check if block is suitable for scaffolding
+                if (block.get('material') in ['rock', 'dirt', 'wood'] and 
+                    block.get('stackSize', 0) > 1 and
+                    not block.get('transparent', False)):
+                    scaffolding_blocks.append(block['name'])
+            return scaffolding_blocks
+        except Exception as e:
+            logger.error(f"Error getting scaffolding blocks: {e}")
+            # Return common scaffolding blocks as fallback
+            return ['cobblestone', 'dirt', 'oak_planks', 'stone']
+    
+    def get_plank_for_log(self, log_type: str) -> Optional[str]:
+        """Get the plank type that can be crafted from a log type
+        
+        Args:
+            log_type: Name of the log (e.g., 'oak_log')
+            
+        Returns:
+            Name of the plank type or None if not found
+        """
+        # Simple mapping based on wood type
+        wood_type = log_type.replace('_log', '')
+        plank_name = f"{wood_type}_planks"
+        
+        # Verify the plank exists
+        if self.get_item_by_name(plank_name):
+            return plank_name
+        return None
 
     def needs_crafting_table(self, item_name: str) -> bool:
         """Check if an item requires a crafting table to craft
