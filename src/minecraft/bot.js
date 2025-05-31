@@ -12,9 +12,6 @@ const { MinecraftEventEmitter } = require('./MinecraftEventEmitter');
 // Load environment variables
 dotenv.config();
 
-// JS function timeout configuration from environment
-const JS_TIMEOUT_MS = parseInt(process.env.MINECRAFT_AGENT_JS_TIMEOUT_MS) || 30000;
-
 // Configure logger
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
@@ -85,8 +82,8 @@ class MinecraftBot {
 
             this.bot.once('error', reject);
 
-            // Timeout after JS_TIMEOUT_MS
-            setTimeout(() => reject(new Error('Spawn timeout')), JS_TIMEOUT_MS);
+            // Timeout after 30 seconds for spawn
+            setTimeout(() => reject(new Error('Spawn timeout')), 30000);
         });
 
         return this;
@@ -368,8 +365,13 @@ class MinecraftBot {
     async routeCommand(method, args) {
         const handlers = {
             // Movement commands
-            'pathfinder.goto': async ({ x, y, z, timeout = JS_TIMEOUT_MS }) => {
+            'pathfinder.goto': async ({ x, y, z, timeout }) => {
+                // Timeout must be provided by Python caller
+                if (!timeout) {
+                    throw new Error('Movement timeout not specified - must be provided by caller');
+                }
                 const goal = new goals.GoalBlock(x, y, z);
+                const startPos = this.bot.entity.position.clone();
                 
                 try {
                     // Check if pathfinder is properly loaded
@@ -378,7 +380,6 @@ class MinecraftBot {
                     }
                     
                     const startTime = Date.now();
-                    const startPos = this.bot.entity.position.clone();
                     console.log(`Starting pathfinding to (${x}, ${y}, ${z}) from (${startPos.x.toFixed(1)}, ${startPos.y.toFixed(1)}, ${startPos.z.toFixed(1)})`);
                     
                     // Track progress

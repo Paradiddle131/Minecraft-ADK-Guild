@@ -69,6 +69,16 @@ class AgentConfig(BaseSettings):
         default=1000,
         description="Maximum size of event queue"
     )
+    
+    # Timeout configuration
+    pathfinder_timeout_ms: int = Field(
+        default=30000,
+        description="Timeout for pathfinder movement in milliseconds"
+    )
+    js_command_timeout_ms: int = Field(
+        default=15000,
+        description="Timeout for JS command execution in milliseconds"
+    )
 
     # Logging configuration
     log_level: str = Field(

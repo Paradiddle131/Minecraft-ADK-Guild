@@ -48,19 +48,20 @@ class BotController:
             logger.error(f"Chat failed: {e}")
             return {"status": "error", "error": str(e)}
     
-    async def move_to(self, x: int, y: int, z: int) -> Dict[str, Any]:
+    async def move_to(self, x: int, y: int, z: int, timeout: Optional[int] = None) -> Dict[str, Any]:
         """Move bot to specific coordinates
         
         Args:
             x: Target X coordinate
             y: Target Y coordinate
             z: Target Z coordinate
+            timeout: Optional timeout in milliseconds
             
         Returns:
             Dict with movement result
         """
         try:
-            result = await self.bridge_manager_instance.move_to(x, y, z)
+            result = await self.bridge_manager_instance.move_to(x, y, z, timeout)
             return {
                 "status": "success",
                 "target": {"x": x, "y": y, "z": z},

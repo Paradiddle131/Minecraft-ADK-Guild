@@ -172,10 +172,16 @@ async def move_to(x: int, y: int, z: int, timeout: Optional[int] = None, tool_co
     if not _bot_controller:
         return {"status": "error", "error": "BotController not initialized"}
         
-    # Use environment variable for default timeout
+    # Use config for default timeout
     if timeout is None:
-        import os
-        timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
+        # Get timeout from config if available
+        try:
+            from ..config import get_config
+            config = get_config()
+            timeout = config.pathfinder_timeout_ms
+        except Exception:
+            # Fallback to 30 seconds if config fails
+            timeout = 30000
         
     try:
         # Get current position for distance calculation
@@ -227,8 +233,8 @@ async def move_to(x: int, y: int, z: int, timeout: Optional[int] = None, tool_co
                 progress_task = None
 
         try:
-            # Use BotController for movement
-            result = await _bot_controller.move_to(x, y, z)
+            # Use BotController for movement, passing the timeout
+            result = await _bot_controller.move_to(x, y, z, timeout=timeout)
             
             # Cancel progress updates once movement is complete
             if progress_task and not progress_task.done():

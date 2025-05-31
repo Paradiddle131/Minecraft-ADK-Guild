@@ -344,14 +344,20 @@ class BridgeManager:
                 
                 # Calculate appropriate timeout for JSPyBridge call
                 # For pathfinder.goto, use the pathfinder timeout + 5 seconds buffer
-                default_js_timeout = int(os.getenv('MINECRAFT_AGENT_JS_COMMAND_TIMEOUT_MS', '15000'))
+                if self.agent_config:
+                    default_js_timeout = self.agent_config.js_command_timeout_ms
+                else:
+                    default_js_timeout = int(os.getenv('MINECRAFT_AGENT_JS_COMMAND_TIMEOUT_MS', '15000'))
                 js_timeout = default_js_timeout  # Default for most commands
                 if command.method == 'pathfinder.goto' and 'timeout' in command.args:
                     # Add 5 second buffer to pathfinder timeout
                     js_timeout = command.args['timeout'] + 5000
                 elif command.method == 'pathfinder.goto':
-                    # Default pathfinder timeout from env var, add 5s buffer
-                    default_pathfinder_timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
+                    # Default pathfinder timeout from config or env var, add 5s buffer
+                    if self.agent_config:
+                        default_pathfinder_timeout = self.agent_config.pathfinder_timeout_ms
+                    else:
+                        default_pathfinder_timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
                     js_timeout = default_pathfinder_timeout + 5000
                 
                 js_result = self.bot.executeCommand({
@@ -405,9 +411,12 @@ class BridgeManager:
     # Convenience methods for common operations
     async def move_to(self, x: int, y: int, z: int, timeout: int = None) -> Dict[str, Any]:
         """Move bot to specific coordinates with timeout protection"""
-        # Use environment variable or default
+        # Use config or environment variable for default
         if timeout is None:
-            timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
+            if self.agent_config:
+                timeout = self.agent_config.pathfinder_timeout_ms
+            else:
+                timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
         
         # Increase command timeout to match pathfinder timeout + buffer
         original_timeout = self.config.command_timeout
