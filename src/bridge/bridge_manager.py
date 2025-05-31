@@ -374,9 +374,9 @@ class BridgeManager:
                 elif command.method == "pathfinder.goto":
                     # Default pathfinder timeout from config or env var, add 5s buffer
                     if self.agent_config:
-                        default_pathfinder_timeout = self.agent_config.pathfinder_timeout_ms
+                        default_pathfinder_timeout = self.agent_config.timeouts.pathfinder_default_ms
                     else:
-                        default_pathfinder_timeout = int(os.getenv("MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS", "30000"))
+                        default_pathfinder_timeout = 30000
                     js_timeout = default_pathfinder_timeout + 5000
 
                 js_result = self.bot.executeCommand(
