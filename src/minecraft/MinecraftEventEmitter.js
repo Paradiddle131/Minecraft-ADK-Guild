@@ -25,21 +25,21 @@ class MinecraftEventEmitter extends EventEmitter {
         this.bot = bot;
         this.botId = bot.username;
         this.setMaxListeners(100);
-        
+
         this.eventStats = {
             totalEmitted: 0,
             byType: {},
             errors: 0
         };
-        
+
         this.debugMode = process.env.EVENT_DEBUG_MODE === 'true';
-        
-        logger.info('MinecraftEventEmitter initialized', { 
+
+        logger.info('MinecraftEventEmitter initialized', {
             botId: this.botId,
-            debugMode: this.debugMode 
+            debugMode: this.debugMode
         });
     }
-    
+
     /**
      * Emit a standardized event to Python bridge
      * @param {string} eventName - The event name (without minecraft: prefix)
@@ -49,23 +49,23 @@ class MinecraftEventEmitter extends EventEmitter {
     emitToPython(eventName, data, options = {}) {
         try {
             const payload = this.createStandardPayload(eventName, data, options);
-            
+
             // Generate unique event ID for tracking
             const eventId = `${this.botId}_${eventName}_${payload.timestamp}_${Math.random().toString(36).substr(2, 9)}`;
             payload.eventId = eventId;
-            
+
             // Emit with minecraft: namespace
             const fullEventName = `minecraft:${eventName}`;
             this.bot.emit(fullEventName, payload);
-            
+
             // Update statistics
             this.updateStats(fullEventName);
-            
+
             // Log event emission lifecycle
             this.logEventEmission(fullEventName, payload, eventId);
-            
+
             return payload;
-            
+
         } catch (error) {
             this.eventStats.errors++;
             logger.error('Failed to emit event to Python', {
@@ -77,7 +77,7 @@ class MinecraftEventEmitter extends EventEmitter {
             throw error;
         }
     }
-    
+
     /**
      * Create standardized event payload
      * @param {string} eventName - The event name
@@ -87,7 +87,7 @@ class MinecraftEventEmitter extends EventEmitter {
      */
     createStandardPayload(eventName, data, options = {}) {
         const timestamp = Date.now();
-        
+
         const payload = {
             event: `minecraft:${eventName}`,
             data: this.sanitizeData(data),
@@ -100,19 +100,19 @@ class MinecraftEventEmitter extends EventEmitter {
                 ...options.metadata
             }
         };
-        
+
         // Add optional fields if provided
         if (options.priority !== undefined) {
             payload.priority = options.priority;
         }
-        
+
         if (options.batchId) {
             payload.batchId = options.batchId;
         }
-        
+
         return payload;
     }
-    
+
     /**
      * Sanitize data to ensure it's JSON serializable
      * @param {any} data - Data to sanitize
@@ -122,15 +122,15 @@ class MinecraftEventEmitter extends EventEmitter {
         if (data === null || data === undefined) {
             return data;
         }
-        
+
         if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
             return data;
         }
-        
+
         if (Array.isArray(data)) {
             return data.map(item => this.sanitizeData(item));
         }
-        
+
         if (typeof data === 'object') {
             // Handle special Minecraft objects
             if (data.username !== undefined) {
@@ -143,7 +143,7 @@ class MinecraftEventEmitter extends EventEmitter {
                     ping: data.ping
                 };
             }
-            
+
             if (data.position !== undefined && data.type !== undefined) {
                 // Entity object
                 return {
@@ -157,12 +157,12 @@ class MinecraftEventEmitter extends EventEmitter {
                     name: data.name
                 };
             }
-            
+
             if (data.x !== undefined && data.y !== undefined && data.z !== undefined) {
                 // Vec3 object
                 return this.sanitizePosition(data);
             }
-            
+
             if (data.name !== undefined && data.type !== undefined) {
                 // Block object
                 return {
@@ -172,7 +172,7 @@ class MinecraftEventEmitter extends EventEmitter {
                     position: this.sanitizePosition(data.position)
                 };
             }
-            
+
             // Generic object - recursively sanitize
             const sanitized = {};
             for (const [key, value] of Object.entries(data)) {
@@ -185,11 +185,11 @@ class MinecraftEventEmitter extends EventEmitter {
             }
             return sanitized;
         }
-        
+
         // Fallback: convert to string
         return String(data);
     }
-    
+
     /**
      * Sanitize position objects (Vec3)
      * @param {object} pos - Position object
@@ -199,14 +199,14 @@ class MinecraftEventEmitter extends EventEmitter {
         if (!pos || typeof pos !== 'object') {
             return null;
         }
-        
+
         return {
             x: typeof pos.x === 'number' ? pos.x : 0,
             y: typeof pos.y === 'number' ? pos.y : 0,
             z: typeof pos.z === 'number' ? pos.z : 0
         };
     }
-    
+
     /**
      * Update event statistics
      * @param {string} eventName - The event name
@@ -215,7 +215,7 @@ class MinecraftEventEmitter extends EventEmitter {
         this.eventStats.totalEmitted++;
         this.eventStats.byType[eventName] = (this.eventStats.byType[eventName] || 0) + 1;
     }
-    
+
     /**
      * Log event emission for debugging
      * @param {string} eventName - The event name
@@ -232,10 +232,10 @@ class MinecraftEventEmitter extends EventEmitter {
             dataKeys: Object.keys(payload.data || {}),
             stage: 'emitted'
         };
-        
+
         // Always log emission for lifecycle tracking
         logger.debug('Event lifecycle: emitted', logData);
-        
+
         // Debug mode provides additional detail
         if (this.debugMode) {
             logger.debug('Event emission details', {
@@ -244,7 +244,7 @@ class MinecraftEventEmitter extends EventEmitter {
             });
         }
     }
-    
+
     /**
      * Get event statistics
      * @returns {object} Event statistics
@@ -256,7 +256,7 @@ class MinecraftEventEmitter extends EventEmitter {
             eventsPerSecond: this.eventStats.totalEmitted / ((Date.now() - this.startTime) / 1000)
         };
     }
-    
+
     /**
      * Reset event statistics
      */
@@ -268,7 +268,7 @@ class MinecraftEventEmitter extends EventEmitter {
         };
         this.startTime = Date.now();
     }
-    
+
     /**
      * Emit spawn event with proper data
      */
@@ -281,7 +281,7 @@ class MinecraftEventEmitter extends EventEmitter {
             food: this.bot.food
         }, { priority: 100 });
     }
-    
+
     /**
      * Emit chat event
      * @param {string} username - The username who sent the message
@@ -294,14 +294,14 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 50 });
     }
-    
+
     /**
      * Emit position update event
      */
     emitPositionEvent() {
         const pos = this.bot.entity?.position;
         if (!pos) return;
-        
+
         this.emitToPython('position', {
             x: pos.x,
             y: pos.y,
@@ -311,7 +311,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 5 });
     }
-    
+
     /**
      * Emit health update event
      */
@@ -323,7 +323,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 75 });
     }
-    
+
     /**
      * Emit player joined event
      * @param {object} player - The player object
@@ -335,7 +335,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 30 });
     }
-    
+
     /**
      * Emit player left event
      * @param {object} player - The player object
@@ -347,7 +347,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 30 });
     }
-    
+
     /**
      * Emit player updated event
      * @param {object} player - The player object
@@ -362,7 +362,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 10 });
     }
-    
+
     /**
      * Emit entity move event
      * @param {object} entity - The entity object
@@ -379,7 +379,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 5 });
     }
-    
+
     /**
      * Emit entity damage event
      * @param {object} entity - The entity object
@@ -397,7 +397,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 30 });
     }
-    
+
     /**
      * Emit bot death event
      * @param {string} cause - Death cause
@@ -411,7 +411,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 100 });
     }
-    
+
     /**
      * Emit bot respawn event
      */
@@ -422,7 +422,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 90 });
     }
-    
+
     /**
      * Emit block update event
      * @param {object} oldBlock - The old block
@@ -436,7 +436,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 10 });
     }
-    
+
     /**
      * Emit block break event
      * @param {object} block - The broken block
@@ -453,7 +453,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 40 });
     }
-    
+
     /**
      * Emit block place event
      * @param {object} block - The placed block
@@ -468,7 +468,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 40 });
     }
-    
+
     /**
      * Emit explosion event
      * @param {object} position - Explosion center
@@ -485,7 +485,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 80 });
     }
-    
+
     /**
      * Emit weather change event
      * @param {string} oldWeather - Previous weather
@@ -502,7 +502,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 20 });
     }
-    
+
     /**
      * Emit time change event
      * @param {number} timeOfDay - Time of day (0-24000)
@@ -511,7 +511,7 @@ class MinecraftEventEmitter extends EventEmitter {
     emitTimeChangeEvent(timeOfDay, age) {
         const isDay = timeOfDay > 1000 && timeOfDay < 13000;
         const isNight = timeOfDay > 14000 || timeOfDay < 1000;
-        
+
         this.emitToPython('time_change', {
             time_of_day: timeOfDay,
             age: age,
@@ -520,7 +520,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 5 });
     }
-    
+
     /**
      * Emit chunk load event
      * @param {number} chunkX - Chunk X coordinate
@@ -534,7 +534,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 15 });
     }
-    
+
     /**
      * Emit chunk unload event
      * @param {number} chunkX - Chunk X coordinate
@@ -548,7 +548,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 15 });
     }
-    
+
     /**
      * Emit entity spawn event
      * @param {object} entity - The entity object
@@ -561,7 +561,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 20 });
     }
-    
+
     /**
      * Emit entity death event
      * @param {object} entity - The entity object
@@ -574,7 +574,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 25 });
     }
-    
+
     /**
      * Emit inventory change event
      * @param {number} slot - The inventory slot
@@ -588,7 +588,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 40 });
     }
-    
+
     /**
      * Emit container open event
      * @param {object} window - The window/container object
@@ -601,7 +601,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 50 });
     }
-    
+
     /**
      * Emit container close event
      * @param {object} window - The window/container object
@@ -613,7 +613,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 45 });
     }
-    
+
     /**
      * Emit item drop event
      * @param {object} item - The dropped item entity
@@ -627,7 +627,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 35 });
     }
-    
+
     /**
      * Emit item pickup event
      * @param {object} item - The picked up item entity
@@ -641,7 +641,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 35 });
     }
-    
+
     /**
      * Emit item craft event
      * @param {string} recipe - Recipe name
@@ -657,7 +657,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 60 });
     }
-    
+
     /**
      * Emit item consume event
      * @param {object} item - Consumed item
@@ -672,7 +672,7 @@ class MinecraftEventEmitter extends EventEmitter {
             time: Date.now()
         }, { priority: 55 });
     }
-    
+
     /**
      * Emit movement progress event
      * @param {object} progressData - Movement progress data

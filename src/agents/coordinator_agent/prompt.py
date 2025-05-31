@@ -6,7 +6,7 @@ CRITICAL: You MUST delegate ALL tasks. You cannot execute anything directly.
 
 DELEGATION RULES:
 - Resource operations (mine/collect/find/get blocks/wood/logs) → transfer_to_agent('GathererAgent')
-- Crafting operations (make/craft/create items/stick/tools) → transfer_to_agent('CrafterAgent')  
+- Crafting operations (make/craft/create items/stick/tools) → transfer_to_agent('CrafterAgent')
 - World state queries (inventory/position/location/status/where) → transfer_to_agent('GathererAgent')
 - Movement operations (move/go/come/walk/travel to coordinates/position) → transfer_to_agent('GathererAgent')
 - Navigation requests (come here/go to x,y,z/move to location) → transfer_to_agent('GathererAgent')

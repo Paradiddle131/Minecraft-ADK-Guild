@@ -5,10 +5,7 @@ import asyncio
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
-
-import structlog
-from tenacity import retry, stop_after_attempt, wait_exponential
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
     from ..config import AgentConfig
@@ -31,12 +28,12 @@ class BridgeConfig:
 @dataclass(order=True)
 class Command:
     """Represents a command to be sent to JavaScript"""
-    
+
     # Required fields without defaults (must come first)
     id: str = field(compare=False)
-    method: str = field(compare=False) 
+    method: str = field(compare=False)
     args: Dict[str, Any] = field(compare=False)
-    
+
     # Optional fields with defaults (used for ordering in PriorityQueue)
     priority: int = field(default=0, compare=True)  # Higher priority executed first
     timestamp: datetime = field(default_factory=datetime.now, compare=True)
@@ -46,7 +43,7 @@ class Command:
 class BridgeManager:
     """Manages communication between Python ADK agents and JavaScript Mineflayer bot"""
 
-    def __init__(self, config: BridgeConfig = None, agent_config: Optional['AgentConfig'] = None):
+    def __init__(self, config: BridgeConfig = None, agent_config: Optional["AgentConfig"] = None):
         self.config = config or BridgeConfig()
         self.agent_config = agent_config
         self.bot = None
@@ -82,7 +79,6 @@ class BridgeManager:
             finally:
                 os.chdir(original_cwd)
 
-
             # Get minecraft configuration from environment or defaults
             # Use agent_config if provided, otherwise fall back to environment variables
             if self.agent_config:
@@ -91,32 +87,39 @@ class BridgeManager:
                 bot_username = self.agent_config.bot_username
                 minecraft_version = self.agent_config.minecraft_version
             else:
-                minecraft_host = os.getenv('MINECRAFT_AGENT_MINECRAFT_HOST', 'localhost')
-                minecraft_port = int(os.getenv('MINECRAFT_AGENT_MINECRAFT_PORT', '25565'))
-                bot_username = os.getenv('MINECRAFT_AGENT_BOT_USERNAME', 'MinecraftAgent')
-                minecraft_version = os.getenv('MINECRAFT_AGENT_MINECRAFT_VERSION', '1.21.1')
-            
-            logger.info(f"Starting bot with configuration: host={minecraft_host}, port={minecraft_port}, username={bot_username}, version={minecraft_version}")
-            
-            bot_result = self.bot_module.startBot({
-                'host': minecraft_host,
-                'port': minecraft_port,
-                'username': bot_username,
-                'auth': 'offline',
-                'version': minecraft_version,
-                'timeout': 60000
-            }, timeout=90000)
+                minecraft_host = os.getenv("MINECRAFT_AGENT_MINECRAFT_HOST", "localhost")
+                minecraft_port = int(os.getenv("MINECRAFT_AGENT_MINECRAFT_PORT", "25565"))
+                bot_username = os.getenv("MINECRAFT_AGENT_BOT_USERNAME", "MinecraftAgent")
+                minecraft_version = os.getenv("MINECRAFT_AGENT_MINECRAFT_VERSION", "1.21.1")
+
+            logger.info(
+                f"Starting bot with configuration: host={minecraft_host}, port={minecraft_port}, username={bot_username}, version={minecraft_version}"
+            )
+
+            bot_result = self.bot_module.startBot(
+                {
+                    "host": minecraft_host,
+                    "port": minecraft_port,
+                    "username": bot_username,
+                    "auth": "offline",
+                    "version": minecraft_version,
+                    "timeout": 60000,
+                },
+                timeout=90000,
+            )
 
             wait_count = 0
             while wait_count < 300:
-                if hasattr(bot_result, 'bot') and bot_result.bot is not None:
+                if hasattr(bot_result, "bot") and bot_result.bot is not None:
                     break
                 await asyncio.sleep(0.1)
                 wait_count += 1
 
-            if not hasattr(bot_result, 'bot') or bot_result.bot is None:
+            if not hasattr(bot_result, "bot") or bot_result.bot is None:
                 logger.error("Bot initialization failed - no bot object returned")
-                raise TimeoutError(f"Bot failed to initialize - check if Minecraft server is running on {minecraft_host}:{minecraft_port}")
+                raise TimeoutError(
+                    f"Bot failed to initialize - check if Minecraft server is running on {minecraft_host}:{minecraft_port}"
+                )
 
             # bot_result.bot is a MinecraftBot instance with executeCommand method
             self.bot = bot_result.bot
@@ -146,34 +149,34 @@ class BridgeManager:
 
     async def _wait_for_spawn_with_timeout(self, timeout: float = None) -> bool:
         """Wait for bot to spawn in the world with timeout
-        
+
         Returns:
             bool: True if spawned, False if timeout
         """
         # Use environment variable or default
         if timeout is None:
-            timeout = float(os.getenv('MINECRAFT_AGENT_SPAWN_TIMEOUT_SECONDS', '30.0'))
-        
+            timeout = float(os.getenv("MINECRAFT_AGENT_SPAWN_TIMEOUT_SECONDS", "30.0"))
+
         # Check if bot is already spawned
         start_time = asyncio.get_event_loop().time()
-        
+
         while asyncio.get_event_loop().time() - start_time < timeout:
             try:
                 # Check if bot has entity (means it's spawned)
-                if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'entity') and self.bot.bot.entity is not None:
+                if hasattr(self.bot, "bot") and hasattr(self.bot.bot, "entity") and self.bot.bot.entity is not None:
                     logger.info("Bot spawned successfully - entity exists")
                     return True
-                    
+
                 # Also check health as an indicator of spawn
-                if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'health') and self.bot.bot.health is not None:
+                if hasattr(self.bot, "bot") and hasattr(self.bot.bot, "health") and self.bot.bot.health is not None:
                     logger.info(f"Bot spawned successfully - health: {self.bot.bot.health}")
                     return True
-                    
+
             except Exception as e:
                 logger.debug(f"Error checking spawn status: {e}")
-                
+
             await asyncio.sleep(0.5)
-        
+
         logger.warning(f"Bot spawn timeout after {timeout}s - server may not be running")
         return False
 
@@ -193,7 +196,7 @@ class BridgeManager:
         ]
 
         for event in events:
-            if hasattr(self.bot, 'bot'):
+            if hasattr(self.bot, "bot"):
                 self.bot.bot.on(event, lambda *args, evt=event: self._handle_event(evt, args))
 
     def _handle_event(self, event_type: str, args):
@@ -257,7 +260,7 @@ class BridgeManager:
         try:
             # Store command for potential cleanup
             self.pending_commands[command_id] = command
-            
+
             result = await asyncio.wait_for(future, timeout=self.config.command_timeout / 1000)
             return result
         except asyncio.TimeoutError:
@@ -308,72 +311,77 @@ class BridgeManager:
 
         # Route to the MinecraftBot's command handlers via direct property access
         # Note: Can't use await on JSPyBridge Proxy objects directly
-        
+
         # For entity.position and other info commands, access the mineflayer bot directly
         if command.method == "entity.position":
-            if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'entity') and self.bot.bot.entity:
+            if hasattr(self.bot, "bot") and hasattr(self.bot.bot, "entity") and self.bot.bot.entity:
                 return self.bot.bot.entity.position
             else:
                 raise RuntimeError("Bot entity not available - bot may not be spawned")
-        
+
         elif command.method == "entity.health":
-            if hasattr(self.bot, 'bot'):
+            if hasattr(self.bot, "bot"):
                 return {
-                    'health': getattr(self.bot.bot, 'health', None),
-                    'food': getattr(self.bot.bot, 'food', None),
-                    'saturation': getattr(self.bot.bot, 'foodSaturation', None)
+                    "health": getattr(self.bot.bot, "health", None),
+                    "food": getattr(self.bot.bot, "food", None),
+                    "saturation": getattr(self.bot.bot, "foodSaturation", None),
                 }
             else:
                 raise RuntimeError("Bot not available")
-        
+
         elif command.method == "inventory.items":
-            if hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'inventory'):
+            if hasattr(self.bot, "bot") and hasattr(self.bot.bot, "inventory"):
                 items = self.bot.bot.inventory.items()
-                return [{'name': item.name, 'count': item.count, 'slot': item.slot} for item in items]
+                return [{"name": item.name, "count": item.count, "slot": item.slot} for item in items]
             else:
                 raise RuntimeError("Bot inventory not available")
-        
+
         else:
             # For all other commands, use the bot's executeCommand method
             # which routes to the JavaScript handlers
-            if hasattr(self.bot, 'executeCommand'):
+            if hasattr(self.bot, "executeCommand"):
                 # Special handling for long-running commands like pathfinder.goto
-                if command.method == 'pathfinder.goto':
+                if command.method == "pathfinder.goto":
                     # Don't retry pathfinder commands - they handle their own timeout
                     logger.info(f"Executing pathfinder.goto to {command.args}")
-                
+
                 # Calculate appropriate timeout for JSPyBridge call
                 # For pathfinder.goto, use the pathfinder timeout + 5 seconds buffer
                 if self.agent_config:
                     default_js_timeout = self.agent_config.js_command_timeout_ms
                 else:
-                    default_js_timeout = int(os.getenv('MINECRAFT_AGENT_JS_COMMAND_TIMEOUT_MS', '15000'))
+                    default_js_timeout = int(os.getenv("MINECRAFT_AGENT_JS_COMMAND_TIMEOUT_MS", "15000"))
                 js_timeout = default_js_timeout  # Default for most commands
-                if command.method == 'pathfinder.goto' and 'timeout' in command.args:
+                if command.method == "pathfinder.goto" and "timeout" in command.args:
                     # Add 5 second buffer to pathfinder timeout
-                    js_timeout = command.args['timeout'] + 5000
-                elif command.method == 'pathfinder.goto':
+                    js_timeout = command.args["timeout"] + 5000
+                elif command.method == "pathfinder.goto":
                     # Default pathfinder timeout from config or env var, add 5s buffer
                     if self.agent_config:
                         default_pathfinder_timeout = self.agent_config.pathfinder_timeout_ms
                     else:
-                        default_pathfinder_timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
+                        default_pathfinder_timeout = int(os.getenv("MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS", "30000"))
                     js_timeout = default_pathfinder_timeout + 5000
-                
-                js_result = self.bot.executeCommand({
-                    'method': command.method,
-                    'args': command.args,
-                    'id': command.id if hasattr(command, 'id') else 'cmd'
-                }, timeout=js_timeout)
-                
+
+                js_result = self.bot.executeCommand(
+                    {
+                        "method": command.method,
+                        "args": command.args,
+                        "id": command.id if hasattr(command, "id") else "cmd",
+                    },
+                    timeout=js_timeout,
+                )
+
                 # Handle JavaScript proxy object
                 if js_result is None:
                     raise RuntimeError(f"No result returned from command: {command.method}")
-                    
+
                 # Log the raw result for debugging
-                logger.debug(f"JS result type: {type(js_result)}, hasattr success: {hasattr(js_result, 'success') if js_result else 'N/A'}")
-                
-                if hasattr(js_result, 'success'):
+                logger.debug(
+                    f"JS result type: {type(js_result)}, hasattr success: {hasattr(js_result, 'success') if js_result else 'N/A'}"
+                )
+
+                if hasattr(js_result, "success"):
                     # Access proxy properties directly
                     success = js_result.success
                     if success:
@@ -382,7 +390,7 @@ class BridgeManager:
                         logger.debug(f"Command {command.method} succeeded with result type: {type(result)}")
                         return result
                     else:
-                        error_msg = js_result.error if hasattr(js_result, 'error') else 'Command failed'
+                        error_msg = js_result.error if hasattr(js_result, "error") else "Command failed"
                         raise RuntimeError(error_msg)
                 else:
                     # Fallback for unexpected result format
@@ -399,11 +407,10 @@ class BridgeManager:
             self._command_processor_task.cancel()
 
         if self.bot:
-            if hasattr(self.bot, 'quit'):
+            if hasattr(self.bot, "quit"):
                 self.bot.quit()
-            elif hasattr(self.bot, 'bot') and hasattr(self.bot.bot, 'quit'):
+            elif hasattr(self.bot, "bot") and hasattr(self.bot.bot, "quit"):
                 self.bot.bot.quit()
-
 
         self.is_connected = False
         logger.info("Bridge closed")
@@ -416,12 +423,12 @@ class BridgeManager:
             if self.agent_config:
                 timeout = self.agent_config.pathfinder_timeout_ms
             else:
-                timeout = int(os.getenv('MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS', '30000'))
-        
+                timeout = int(os.getenv("MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS", "30000"))
+
         # Increase command timeout to match pathfinder timeout + buffer
         original_timeout = self.config.command_timeout
         self.config.command_timeout = timeout + 5000  # Add 5s buffer
-        
+
         try:
             result = await self.execute_command("pathfinder.goto", x=x, y=y, z=z, timeout=timeout)
             return result
