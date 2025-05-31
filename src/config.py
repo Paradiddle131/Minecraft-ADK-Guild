@@ -5,8 +5,18 @@ Configuration management for Minecraft Multi-Agent system
 import os
 from typing import Optional
 
-from pydantic import Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings
+
+
+class TimeoutConfig(BaseModel):
+    """Centralized timeout configuration."""
+    pathfinder_default_ms: int = Field(30000, description="Default pathfinder navigation timeout")
+    pathfinder_max_ms: int = Field(300000, description="Maximum allowed pathfinder timeout (5 min)")
+    quick_command_ms: int = Field(5000, description="Timeout for quick commands (chat, inventory)")
+    standard_command_ms: int = Field(15000, description="Timeout for standard commands")
+    long_command_ms: int = Field(60000, description="Timeout for long operations (crafting, mining)")
+    bridge_overhead_ms: int = Field(5000, description="Additional timeout for bridge communication")
 
 
 class AgentConfig(BaseSettings):
@@ -33,12 +43,10 @@ class AgentConfig(BaseSettings):
     minecraft_version: str = Field(default="1.21.1", description="Minecraft version for bot compatibility")
 
     # Bridge configuration
-    command_timeout_ms: int = Field(default=10000, description="Command timeout in milliseconds")
     event_queue_size: int = Field(default=1000, description="Maximum size of event queue")
-
-    # Timeout configuration
-    pathfinder_timeout_ms: int = Field(default=30000, description="Timeout for pathfinder movement in milliseconds")
-    js_command_timeout_ms: int = Field(default=15000, description="Timeout for JS command execution in milliseconds")
+    
+    # Centralized timeout configuration
+    timeouts: TimeoutConfig = Field(default_factory=TimeoutConfig)
 
     # Logging configuration
     log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")

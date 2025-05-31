@@ -19,7 +19,6 @@ logger = get_logger(__name__)
 class BridgeConfig:
     """Configuration for JSPyBridge"""
 
-    command_timeout: int = 5000  # milliseconds
     batch_size: int = 10
     max_retries: int = 3
     event_queue_size: int = 1000
@@ -261,7 +260,9 @@ class BridgeManager:
             # Store command for potential cleanup
             self.pending_commands[command_id] = command
 
-            result = await asyncio.wait_for(future, timeout=self.config.command_timeout / 1000)
+            # Get timeout from agent config if available
+            timeout_ms = self.agent_config.timeouts.standard_command_ms if self.agent_config else 15000
+            result = await asyncio.wait_for(future, timeout=timeout_ms / 1000)
             return result
         except asyncio.TimeoutError:
             logger.error("Command timeout", method=method, args=kwargs)
@@ -348,9 +349,9 @@ class BridgeManager:
                 # Calculate appropriate timeout for JSPyBridge call
                 # For pathfinder.goto, use the pathfinder timeout + 5 seconds buffer
                 if self.agent_config:
-                    default_js_timeout = self.agent_config.js_command_timeout_ms
+                    default_js_timeout = self.agent_config.timeouts.standard_command_ms
                 else:
-                    default_js_timeout = int(os.getenv("MINECRAFT_AGENT_JS_COMMAND_TIMEOUT_MS", "15000"))
+                    default_js_timeout = 15000
                 js_timeout = default_js_timeout  # Default for most commands
                 if command.method == "pathfinder.goto" and "timeout" in command.args:
                     # Add 5 second buffer to pathfinder timeout
@@ -421,20 +422,16 @@ class BridgeManager:
         # Use config or environment variable for default
         if timeout is None:
             if self.agent_config:
-                timeout = self.agent_config.pathfinder_timeout_ms
+                timeout = self.agent_config.timeouts.pathfinder_default_ms
             else:
-                timeout = int(os.getenv("MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS", "30000"))
-
-        # Increase command timeout to match pathfinder timeout + buffer
-        original_timeout = self.config.command_timeout
-        self.config.command_timeout = timeout + 5000  # Add 5s buffer
+                timeout = 30000
 
         try:
             result = await self.execute_command("pathfinder.goto", x=x, y=y, z=z, timeout=timeout)
             return result
-        finally:
-            # Restore original timeout
-            self.config.command_timeout = original_timeout
+        except Exception as e:
+            logger.error(f"Move to {x}, {y}, {z} failed: {e}")
+            raise
 
     async def dig_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
         """Dig a block at specific coordinates"""
