@@ -12,6 +12,9 @@ const { MinecraftEventEmitter } = require('./MinecraftEventEmitter');
 // Load environment variables
 dotenv.config();
 
+// JS function timeout configuration from environment
+const JS_TIMEOUT_MS = parseInt(process.env.MINECRAFT_AGENT_JS_TIMEOUT_MS) || 30000;
+
 // Configure logger
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
@@ -82,8 +85,8 @@ class MinecraftBot {
 
             this.bot.once('error', reject);
 
-            // Timeout after 30 seconds
-            setTimeout(() => reject(new Error('Spawn timeout')), 30000);
+            // Timeout after JS_TIMEOUT_MS
+            setTimeout(() => reject(new Error('Spawn timeout')), JS_TIMEOUT_MS);
         });
 
         return this;
@@ -266,6 +269,13 @@ class MinecraftBot {
         const legacyEvents = ['error', 'end', 'kicked'];
         legacyEvents.forEach(eventName => {
             this.bot.on(eventName, (...args) => {
+                // Stop pathfinding on disconnect events
+                if (eventName === 'end' || eventName === 'kicked') {
+                    if (this.bot.pathfinder) {
+                        logger.info(`Bot ${eventName} event - stopping pathfinder`);
+                        this.bot.pathfinder.stop();
+                    }
+                }
                 this.handleEvent(eventName, args);
             });
         });
@@ -358,7 +368,7 @@ class MinecraftBot {
     async routeCommand(method, args) {
         const handlers = {
             // Movement commands
-            'pathfinder.goto': async ({ x, y, z, timeout = 30000 }) => {
+            'pathfinder.goto': async ({ x, y, z, timeout = JS_TIMEOUT_MS }) => {
                 const goal = new goals.GoalBlock(x, y, z);
                 
                 try {
