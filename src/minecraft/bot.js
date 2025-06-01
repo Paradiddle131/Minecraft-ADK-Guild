@@ -582,7 +582,8 @@ class MinecraftBot {
                 if (!this.bot) throw new Error('Bot not initialized');
                 if (!this.bot.entity) throw new Error('Bot entity not available - bot may not be spawned');
                 if (!this.bot.entity.position) throw new Error('Bot position not available');
-                return this.bot.entity.position;
+                const pos = this.bot.entity.position;
+                return { x: pos.x, y: pos.y, z: pos.z };
             },
 
             'entity.health': async () => {

@@ -235,8 +235,9 @@ class BotController:
             timeout = timeout_ms or self.config.timeouts.pathfinder_default_ms
             result = await self.bridge.move_to(int(x), int(y), int(z), timeout=timeout)
             
-            if result.get('status') == 'success':
-                final_pos = result.get('position', {'x': x, 'y': y, 'z': z})
+            if result.get('status') == 'completed':
+                # JavaScript returns 'actual_position' not 'position'
+                final_pos = result.get('actual_position', {'x': x, 'y': y, 'z': z})
                 distance = None
                 if start_pos:
                     distance = self._calculate_distance(start_pos, final_pos)
@@ -361,7 +362,7 @@ class BotController:
     async def get_position(self) -> GetPositionResponse:
         """Get bot's current position"""
         try:
-            result = await self.bridge.execute_command('bot.entity.position')
+            result = await self.bridge.execute_command('entity.position')
             
             if isinstance(result, dict) and all(k in result for k in ['x', 'y', 'z']):
                 return GetPositionResponse(
@@ -463,11 +464,13 @@ class BotController:
                         (z - current_pos.z)**2
                     )
                     progress_percent = ((total_distance - distance_remaining) / total_distance) * 100 if total_distance > 0 else 100
+                    # Ensure progress_percent is within 0-100 range
+                    progress_percent = max(0, min(progress_percent, 100))
                     
                     # Create progress update
                     progress = PathfindingProgress(
                         operation_id=operation_id,
-                        progress_percent=min(progress_percent, 100),
+                        progress_percent=progress_percent,
                         status_message=f"{distance_remaining:.0f} blocks left",
                         elapsed_ms=elapsed_ms,
                         current_position=current_pos,

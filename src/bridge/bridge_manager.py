@@ -317,7 +317,8 @@ class BridgeManager:
         # For entity.position and other info commands, access the mineflayer bot directly
         if command.method == "entity.position":
             if hasattr(self.bot, "bot") and hasattr(self.bot.bot, "entity") and self.bot.bot.entity:
-                return self.bot.bot.entity.position
+                pos = self.bot.bot.entity.position
+                return {"x": pos.x, "y": pos.y, "z": pos.z}
             else:
                 raise RuntimeError("Bot entity not available - bot may not be spawned")
 

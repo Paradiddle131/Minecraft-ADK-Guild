@@ -23,5 +23,4 @@ class PathfindingProgress(ProgressUpdate):
     current_position: Position3D
     target_position: Position3D
     distance_remaining: float
-    # NOTE: obstacles_encountered, path_recalculations removed - not available from Mineflayer
     status_message: str  # Custom progress messages

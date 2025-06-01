@@ -26,13 +26,12 @@ class MoveToCommand(BaseModel):
     sprint: bool = Field(False, description="Whether to sprint")
 
 
-# Block Interaction Commands - CORRECTED per Mineflayer API
+# Block Interaction Commands
 class DigBlockCommand(BaseModel):
     """Command to dig/mine a block - matches Mineflayer API."""
     position: Position3D
     force_look: bool = Field(True, description="Whether to look at block first")
     dig_face: Optional[str] = Field(None, description="Which face to dig from")
-    # NOTE: tool_preference removed - not supported by Mineflayer
 
 
 class PlaceBlockCommand(BaseModel):

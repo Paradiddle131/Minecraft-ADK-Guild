@@ -30,13 +30,12 @@ class TimeoutError(ErrorDetails):
     last_known_position: Optional[Position3D] = None
 
 
-# Movement Responses - CORRECTED per Mineflayer limitations
+# Movement Responses
 class MoveToResponse(BaseResponse):
     """Response from movement command."""
     target_position: Position3D
     actual_position: Optional[Position3D] = Field(None, description="Final position reached")
     distance_traveled: Optional[float] = Field(None, description="Custom calculated distance")
-    # NOTE: path_length removed - not provided by Mineflayer
     error_details: Optional[Union[ErrorDetails, TimeoutError]] = None
     
     class Config:

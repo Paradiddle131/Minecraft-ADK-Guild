@@ -75,11 +75,14 @@ async def move_to(
         }
         
         if response.status == "success":
-            result["actual_position"] = response.actual_position.dict()
-            if response.distance_traveled:
+            if response.actual_position:
+                logger.debug(f"Converting actual_position to dict: {response.actual_position}")
+                result["actual_position"] = response.actual_position.dict()
+            if response.distance_traveled is not None:
                 result["distance_traveled"] = response.distance_traveled
                 
             # Send completion message
+            logger.debug("Sending chat message 'Arrived'")
             await _bot_controller.chat("Arrived")
             
             # Update state
@@ -103,7 +106,9 @@ async def move_to(
         return result
         
     except Exception as e:
+        import traceback
         logger.error(f"Movement error: {e}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         if tool_context:
             tool_context.state["temp:movement_in_progress"] = None
         return {"status": "error", "error": str(e)}
