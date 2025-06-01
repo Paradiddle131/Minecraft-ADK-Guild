@@ -430,27 +430,48 @@ async def find_blocks(
         return {"status": "error", "error": "BotController not initialized"}
 
     try:
-        # Normalize and validate block name using MinecraftDataService
-        normalized_block = block_name
-        block_data = None
+        # Handle patterns and wildcards using MinecraftDataService
+        block_ids = []
+        matching_blocks = []
+
         if _mc_data_service:
-            block_data = _mc_data_service.get_block_by_name(block_name)
-            if not block_data:
-                # Try to find similar block names
-                all_blocks = _mc_data_service.get_all_blocks()
-                similar_blocks = [b for b in all_blocks if block_name.lower() in b.get("name", "").lower()]
-                if similar_blocks:
-                    logger.warning(
-                        f"Block '{block_name}' not found, searching anyway. Similar blocks: {[b['name'] for b in similar_blocks[:3]]}"
+            # Check if it's a pattern (contains wildcards or generic terms)
+            if "*" in block_name or block_name.lower() in ["log", "logs", "plank", "planks"]:
+                # Get blocks matching the pattern
+                matching_blocks = _mc_data_service.get_blocks_by_pattern(block_name)
+                if matching_blocks:
+                    block_ids = [block.get("id") for block in matching_blocks if "id" in block]
+                    logger.info(
+                        f"Pattern '{block_name}' matched {len(matching_blocks)} block types: {[b['name'] for b in matching_blocks[:5]]}"
                     )
                 else:
-                    logger.warning(f"Unknown block type '{block_name}', searching anyway")
+                    logger.warning(f"No blocks found matching pattern '{block_name}'")
+                    return {
+                        "status": "success",
+                        "block_type": block_name,
+                        "original_query": block_name,
+                        "count": 0,
+                        "positions": [],
+                        "search_radius": max_distance,
+                    }
             else:
-                normalized_block = block_data.get("name", block_name)
-                logger.info(f"Searching for {normalized_block} within {max_distance} blocks")
+                # Single block lookup
+                block_data = _mc_data_service.get_block_by_name(block_name)
+                if block_data:
+                    block_ids = [block_data.get("id")]
+                    matching_blocks = [block_data]
+                    logger.info(
+                        f"Searching for {block_data.get('name')} (ID: {block_data.get('id')}) within {max_distance} blocks"
+                    )
+                else:
+                    logger.warning(f"Unknown block type '{block_name}'")
+                    return {"status": "error", "error": f"Unknown block type: {block_name}"}
 
-        # Use BotController to find blocks
-        block_list = await _bot_controller.find_blocks(normalized_block, max_distance, count)
+        if not block_ids:
+            return {"status": "error", "error": f"Could not resolve block name/pattern: {block_name}"}
+
+        # Use BotController to find blocks by IDs
+        block_list = await _bot_controller.find_blocks(block_ids, max_distance, count)
 
         # Convert JSPyBridge Proxy object to Python list if needed
         if not isinstance(block_list, list):
@@ -474,23 +495,26 @@ async def find_blocks(
 
         response = {
             "status": "success",
-            "block_type": normalized_block,
+            "block_type": block_name if len(matching_blocks) != 1 else matching_blocks[0].get("name", block_name),
             "original_query": block_name,
             "count": len(block_list),
             "positions": block_list,
             "search_radius": max_distance,
         }
 
-        # Add enriched block data if available
-        if block_data:
-            response["block_data"] = {
-                "hardness": block_data.get("hardness", 0),
-                "material": block_data.get("material", "unknown"),
-                "drops": block_data.get("drops", []),
-                "transparent": block_data.get("transparent", False),
-            }
+        # Add information about matched block types
+        if matching_blocks:
+            response["matched_blocks"] = [
+                {
+                    "name": block.get("name"),
+                    "id": block.get("id"),
+                    "hardness": block.get("hardness", 0),
+                    "material": block.get("material", "unknown"),
+                }
+                for block in matching_blocks[:10]  # Limit to first 10 to avoid huge responses
+            ]
 
-        logger.info(f"Found {len(block_list)} {normalized_block} blocks within {max_distance} blocks")
+        logger.info(f"Found {len(block_list)} blocks matching '{block_name}' within {max_distance} blocks")
         return response
 
     except Exception as e:

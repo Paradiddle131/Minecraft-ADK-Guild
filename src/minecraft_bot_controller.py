@@ -246,11 +246,13 @@ class BotController:
             logger.error(f"Get health failed: {e}")
             return {"health": 0, "food": 0, "saturation": 0}
 
-    async def find_blocks(self, block_name: str, max_distance: int = 64, count: int = 1) -> List[Dict[str, int]]:
-        """Find blocks of a specific type
+    async def find_blocks(
+        self, block_ids: Union[int, List[int]], max_distance: int = 64, count: int = 1
+    ) -> List[Dict[str, int]]:
+        """Find blocks by ID(s)
 
         Args:
-            block_name: Name of block to find
+            block_ids: Single block ID or list of block IDs to find
             max_distance: Maximum search distance
             count: Maximum number of blocks to return
 
@@ -259,7 +261,7 @@ class BotController:
         """
         try:
             result = await self.bridge_manager_instance.execute_command(
-                "world.findBlocks", name=block_name, maxDistance=max_distance, count=count
+                "world.findBlocks", matching=block_ids, maxDistance=max_distance, count=count
             )
             return result if isinstance(result, list) else []
         except Exception as e:

@@ -750,12 +750,13 @@ class MinecraftBot {
                 };
             },
 
-            'world.findBlocks': async ({ name, maxDistance = 64, count = 1 }) => {
-                const blockType = this.bot.registry.blocksByName[name];
-                if (!blockType) throw new Error(`Unknown block type: ${name}`);
+            'world.findBlocks': async ({ matching, maxDistance = 64, count = 1 }) => {
+                // This is now a simple protocol proxy - Python sends exact block IDs
+                // matching can be a single ID or array of IDs
+                const matchingIds = Array.isArray(matching) ? matching : [matching];
 
                 const blocks = this.bot.findBlocks({
-                    matching: blockType.id,
+                    matching: matchingIds,
                     maxDistance,
                     count
                 });

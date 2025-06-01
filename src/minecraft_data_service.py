@@ -453,6 +453,61 @@ class MinecraftDataService:
             logger.error(f"Error getting all blocks: {e}")
             return []
 
+    def get_blocks_by_pattern(self, pattern: str) -> List[Dict[str, Any]]:
+        """Get blocks matching a pattern (e.g., '*_log', 'log', 'logs')
+
+        Args:
+            pattern: Pattern to match against block names
+
+        Returns:
+            List of matching block data dicts with their IDs
+        """
+        try:
+            matching_blocks = []
+            pattern_lower = pattern.lower().strip()
+
+            # Handle wildcard patterns
+            if pattern_lower.endswith("*_log") or pattern_lower in ["log", "logs"]:
+                # Get all log type blocks
+                suffix = "_log"
+                for name, block_data in self.mc_data.blocks_name.items():
+                    if name.endswith(suffix):
+                        matching_blocks.append(block_data)
+
+            elif pattern_lower.endswith("*_planks") or pattern_lower in ["plank", "planks"]:
+                # Get all plank type blocks
+                suffix = "_planks"
+                for name, block_data in self.mc_data.blocks_name.items():
+                    if name.endswith(suffix):
+                        matching_blocks.append(block_data)
+
+            elif "*_" in pattern_lower:
+                # Generic wildcard pattern
+                suffix = pattern_lower.split("*_")[1]
+                for name, block_data in self.mc_data.blocks_name.items():
+                    if name.endswith(suffix):
+                        matching_blocks.append(block_data)
+
+            elif "_*" in pattern_lower:
+                # Prefix pattern
+                prefix = pattern_lower.split("_*")[0]
+                for name, block_data in self.mc_data.blocks_name.items():
+                    if name.startswith(prefix + "_"):
+                        matching_blocks.append(block_data)
+
+            else:
+                # Exact match or contains
+                for name, block_data in self.mc_data.blocks_name.items():
+                    if pattern_lower == name.lower() or pattern_lower in name.lower():
+                        matching_blocks.append(block_data)
+
+            logger.info(f"Found {len(matching_blocks)} blocks matching pattern '{pattern}'")
+            return matching_blocks
+
+        except Exception as e:
+            logger.error(f"Error getting blocks by pattern '{pattern}': {e}")
+            return []
+
     def get_recipes_for_item(self, item_name: str) -> List[Dict[str, Any]]:
         """Get all recipes that produce the specified item.
 
