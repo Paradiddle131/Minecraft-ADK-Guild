@@ -384,22 +384,42 @@ class MinecraftBot {
 
                     // Track progress
                     let lastProgressUpdate = 0;
+                    let lastChatUpdate = 0;
                     let pathStatus = 'computing';
                     let timeoutId = null;
+                    let stuckCount = 0;
+                    let lastDistance = null;
+                    const chatUpdateInterval = 5000; // 5 seconds between chat updates
+                    const stuckThreshold = 3;
+
+                    // Initial distance calculation
+                    const initialDistance = Math.sqrt(
+                        Math.pow(startPos.x - x, 2) +
+                        Math.pow(startPos.y - y, 2) +
+                        Math.pow(startPos.z - z, 2)
+                    );
+
+                    // Send initial chat message
+                    this.bot.chat(`I'm at (${Math.floor(startPos.x)}, ${Math.floor(startPos.y)}, ${Math.floor(startPos.z)}) and I'm on my way to (${x}, ${y}, ${z}). Distance: ${initialDistance.toFixed(1)} blocks`);
+
+                    if (initialDistance > 5) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        this.bot.chat(`Starting navigation to (${x}, ${y}, ${z}) - will update every 5 seconds...`);
+                    }
 
                     // Progress tracking function
                     const progressHandler = (result) => {
                         pathStatus = result.status;
                         const now = Date.now();
-                        if (now - lastProgressUpdate > 1000) { // Update every second
-                            const currentPos = this.bot.entity.position;
-                            const distanceToGoal = Math.sqrt(
-                                Math.pow(currentPos.x - x, 2) +
-                                Math.pow(currentPos.y - y, 2) +
-                                Math.pow(currentPos.z - z, 2)
-                            );
+                        const currentPos = this.bot.entity.position;
+                        const distanceToGoal = Math.sqrt(
+                            Math.pow(currentPos.x - x, 2) +
+                            Math.pow(currentPos.y - y, 2) +
+                            Math.pow(currentPos.z - z, 2)
+                        );
 
-                            // Emit progress event
+                        // Emit progress event every second
+                        if (now - lastProgressUpdate > 1000) {
                             if (this.eventEmitter) {
                                 this.eventEmitter.emitMovementProgressEvent({
                                     target: { x, y, z },
@@ -413,9 +433,39 @@ class MinecraftBot {
                                     elapsed_time: now - startTime
                                 });
                             }
-
                             console.log(`Path progress: status=${result.status}, distance=${distanceToGoal.toFixed(1)}`);
                             lastProgressUpdate = now;
+                        }
+
+                        // Send chat updates every 5 seconds for long movements
+                        if (initialDistance > 5 && now - lastChatUpdate > chatUpdateInterval) {
+                            // Check if stuck
+                            if (lastDistance !== null && Math.abs(lastDistance - distanceToGoal) < 0.5) {
+                                stuckCount++;
+                                if (stuckCount >= stuckThreshold) {
+                                    this.bot.chat(`Navigation appears stuck at ${distanceToGoal.toFixed(1)} blocks - may need manual help`);
+                                } else {
+                                    this.bot.chat(`Navigation progress: ${distanceToGoal.toFixed(1)} blocks remaining (might be finding path around obstacles)`);
+                                }
+                            } else {
+                                // Normal progress
+                                stuckCount = 0;
+                                const progressMade = initialDistance - distanceToGoal;
+                                const progressPercent = (progressMade / initialDistance) * 100;
+                                this.bot.chat(`Moving... ${distanceToGoal.toFixed(1)} blocks remaining (${progressPercent.toFixed(0)}% complete)`);
+                            }
+
+                            lastDistance = distanceToGoal;
+                            lastChatUpdate = now;
+
+                            // Stop updates if stuck for too long
+                            if (stuckCount >= stuckThreshold + 2) {
+                                console.log('Bot appears stuck after multiple updates, stopping progress reporting');
+                                // Remove listener to stop updates
+                                if (this.bot.pathfinder.removeListener) {
+                                    this.bot.pathfinder.removeListener('path_update', progressHandler);
+                                }
+                            }
                         }
                     };
 
@@ -468,6 +518,9 @@ class MinecraftBot {
                     const totalTime = Date.now() - startTime;
                     console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
 
+                    // Send completion message
+                    this.bot.chat(`Arrived at (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`);
+
                     // Clean up event listener
                     if (this.bot.pathfinder.removeListener) {
                         this.bot.pathfinder.removeListener('path_update', progressHandler);
@@ -506,10 +559,13 @@ class MinecraftBot {
 
                     // Check for specific error types
                     if (errorMsg.includes('timeout')) {
+                        this.bot.chat(`Movement timed out after ${timeout}ms. Try again or increase the timeout.`);
                         throw new Error(`Movement timeout: Failed to reach (${x}, ${y}, ${z}) within ${timeout}ms`);
                     } else if (errorMsg.includes('No path')) {
+                        this.bot.chat('Movement failed - couldn\'t reach destination');
                         throw new Error(`No path found to (${x}, ${y}, ${z}). The location may be blocked or unreachable.`);
                     } else {
+                        this.bot.chat('Movement failed - couldn\'t reach destination');
                         throw new Error(`Movement failed: ${errorMsg}`);
                     }
                 }
