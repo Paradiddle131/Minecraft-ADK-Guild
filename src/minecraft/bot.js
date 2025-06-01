@@ -352,6 +352,7 @@ class MinecraftBot {
             // Route to appropriate handler
             const result = await this.routeCommand(method, args);
 
+            logger.debug(`executeCommand result:`, result);
             return {
                 id,
                 success: true,
@@ -751,12 +752,38 @@ class MinecraftBot {
             },
 
             'world.findBlocks': async ({ matching, maxDistance = 64, count = 1 }) => {
-                // This is now a simple protocol proxy - Python sends exact block IDs
-                // matching can be a single ID or array of IDs
+                // matching can be block IDs or block names - resolve to actual registry IDs
                 const matchingIds = Array.isArray(matching) ? matching : [matching];
+                
+                // Convert any block names to IDs using bot's actual registry
+                const resolvedIds = matchingIds.map(blockIdOrName => {
+                    if (typeof blockIdOrName === 'string') {
+                        // It's a block name - resolve using bot registry
+                        const blockType = this.bot.registry.blocksByName[blockIdOrName];
+                        if (blockType) {
+                            return blockType.id;
+                        } else {
+                            logger.warn(`Unknown block name: ${blockIdOrName}`);
+                            return null;
+                        }
+                    } else {
+                        // It's already a block ID - verify it exists in registry
+                        const blockType = this.bot.registry.blocksArray[blockIdOrName];
+                        if (blockType) {
+                            return blockIdOrName;
+                        } else {
+                            logger.warn(`Invalid block ID: ${blockIdOrName}`);
+                            return null;
+                        }
+                    }
+                }).filter(id => id !== null);
+
+                if (resolvedIds.length === 0) {
+                    return [];
+                }
 
                 const blocks = this.bot.findBlocks({
-                    matching: matchingIds,
+                    matching: resolvedIds,
                     maxDistance,
                     count
                 });
@@ -1043,7 +1070,6 @@ class MinecraftBot {
         if (!handler) {
             throw new Error(`Unknown command: ${method}`);
         }
-
         return await handler(args);
     }
 

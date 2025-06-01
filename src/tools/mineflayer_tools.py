@@ -470,8 +470,10 @@ async def find_blocks(
         if not block_ids:
             return {"status": "error", "error": f"Could not resolve block name/pattern: {block_name}"}
 
-        # Use BotController to find blocks by IDs
-        block_list = await _bot_controller.find_blocks(block_ids, max_distance, count)
+        # Use BotController to find blocks by names (JavaScript will resolve to IDs)
+        block_names = [block.get("name") for block in matching_blocks if block.get("name")]
+        logger.info(f"Sending block names to JavaScript: {block_names}")
+        block_list = await _bot_controller.find_blocks(block_names, max_distance, count)
 
         # Convert JSPyBridge Proxy object to Python list if needed
         if not isinstance(block_list, list):

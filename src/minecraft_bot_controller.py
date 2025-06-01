@@ -247,12 +247,12 @@ class BotController:
             return {"health": 0, "food": 0, "saturation": 0}
 
     async def find_blocks(
-        self, block_ids: Union[int, List[int]], max_distance: int = 64, count: int = 1
+        self, block_identifiers: Union[int, str, List[Union[int, str]]], max_distance: int = 64, count: int = 1
     ) -> List[Dict[str, int]]:
-        """Find blocks by ID(s)
+        """Find blocks by ID(s) or name(s)
 
         Args:
-            block_ids: Single block ID or list of block IDs to find
+            block_identifiers: Single block ID/name or list of block IDs/names to find
             max_distance: Maximum search distance
             count: Maximum number of blocks to return
 
@@ -261,9 +261,32 @@ class BotController:
         """
         try:
             result = await self.bridge_manager_instance.execute_command(
-                "world.findBlocks", matching=block_ids, maxDistance=max_distance, count=count
+                "world.findBlocks", matching=block_identifiers, maxDistance=max_distance, count=count
             )
-            return result if isinstance(result, list) else []
+            # Handle JavaScript proxy objects that behave like lists
+            if isinstance(result, list):
+                return result
+            elif hasattr(result, '__len__') and hasattr(result, '__iter__'):
+                # Convert proxy object to Python list
+                python_list = []
+                for item in result:
+                    # Try to extract x, y, z coordinates from proxy objects
+                    try:
+                        # Access coordinates directly from the proxy object
+                        x = getattr(item, 'x', None)
+                        y = getattr(item, 'y', None) 
+                        z = getattr(item, 'z', None)
+                        if x is not None and y is not None and z is not None:
+                            python_list.append({"x": x, "y": y, "z": z})
+                        else:
+                            # Fallback - try to convert to dict
+                            python_list.append({"error": f"Could not extract coordinates from {type(item)}"})
+                    except Exception as e:
+                        # If we can't extract coordinates, create a placeholder
+                        python_list.append({"error": f"Coordinate extraction failed: {str(e)}"})
+                return python_list
+            else:
+                return []
         except Exception as e:
             logger.error(f"Find blocks failed: {e}")
             return []
