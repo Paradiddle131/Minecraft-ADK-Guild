@@ -407,9 +407,13 @@ class MinecraftBot {
                         this.bot.chat(`Starting navigation to (${x}, ${y}, ${z}) - will update every 5 seconds...`);
                     }
 
-                    // Progress tracking function
-                    const progressHandler = (result) => {
-                        pathStatus = result.status;
+                    // Progress tracking using interval timer instead of events
+                    let progressInterval = null;
+                    let movementComplete = false;
+
+                    const sendProgressUpdate = () => {
+                        if (movementComplete) return;
+
                         const now = Date.now();
                         const currentPos = this.bot.entity.position;
                         const distanceToGoal = Math.sqrt(
@@ -418,30 +422,31 @@ class MinecraftBot {
                             Math.pow(currentPos.z - z, 2)
                         );
 
-                        // Emit progress event every second
-                        if (now - lastProgressUpdate > 1000) {
-                            if (this.eventEmitter) {
-                                this.eventEmitter.emitMovementProgressEvent({
-                                    target: { x, y, z },
-                                    current_position: {
-                                        x: Math.floor(currentPos.x),
-                                        y: Math.floor(currentPos.y),
-                                        z: Math.floor(currentPos.z)
-                                    },
-                                    distance_remaining: distanceToGoal,
-                                    path_status: result.status,
-                                    elapsed_time: now - startTime
-                                });
-                            }
-                            console.log(`Path progress: status=${result.status}, distance=${distanceToGoal.toFixed(1)}`);
-                            lastProgressUpdate = now;
+                        console.log(`Progress check: distance=${distanceToGoal.toFixed(1)}, moving=${this.bot.pathfinder.isMoving()}`);
+
+                        // Emit progress event for Python
+                        if (this.eventEmitter) {
+                            this.eventEmitter.emitMovementProgressEvent({
+                                target: { x, y, z },
+                                current_position: {
+                                    x: Math.floor(currentPos.x),
+                                    y: Math.floor(currentPos.y),
+                                    z: Math.floor(currentPos.z)
+                                },
+                                distance_remaining: distanceToGoal,
+                                path_status: this.bot.pathfinder.isMoving() ? 'moving' : 'idle',
+                                elapsed_time: now - startTime
+                            });
                         }
 
                         // Send chat updates every 5 seconds for long movements
                         if (initialDistance > 5 && now - lastChatUpdate > chatUpdateInterval) {
+                            console.log(`Sending chat update: distance=${distanceToGoal.toFixed(1)}, lastDistance=${lastDistance}`);
+
                             // Check if stuck
                             if (lastDistance !== null && Math.abs(lastDistance - distanceToGoal) < 0.5) {
                                 stuckCount++;
+                                console.log(`Bot might be stuck: stuckCount=${stuckCount}`);
                                 if (stuckCount >= stuckThreshold) {
                                     this.bot.chat(`Navigation appears stuck at ${distanceToGoal.toFixed(1)} blocks - may need manual help`);
                                 } else {
@@ -452,6 +457,7 @@ class MinecraftBot {
                                 stuckCount = 0;
                                 const progressMade = initialDistance - distanceToGoal;
                                 const progressPercent = (progressMade / initialDistance) * 100;
+                                console.log(`Sending normal progress: ${progressPercent.toFixed(0)}% complete`);
                                 this.bot.chat(`Moving... ${distanceToGoal.toFixed(1)} blocks remaining (${progressPercent.toFixed(0)}% complete)`);
                             }
 
@@ -461,17 +467,23 @@ class MinecraftBot {
                             // Stop updates if stuck for too long
                             if (stuckCount >= stuckThreshold + 2) {
                                 console.log('Bot appears stuck after multiple updates, stopping progress reporting');
-                                // Remove listener to stop updates
-                                if (this.bot.pathfinder.removeListener) {
-                                    this.bot.pathfinder.removeListener('path_update', progressHandler);
-                                }
+                                clearInterval(progressInterval);
+                                progressInterval = null;
+                            }
+
+                            // Stop if very close to target
+                            if (distanceToGoal < 2) {
+                                console.log('Very close to target, stopping progress updates');
+                                clearInterval(progressInterval);
+                                progressInterval = null;
                             }
                         }
                     };
 
-                    // Attach progress handler to pathfinder, not bot
-                    if (this.bot.pathfinder.on) {
-                        this.bot.pathfinder.on('path_update', progressHandler);
+                    // Start progress updates for long movements
+                    if (initialDistance > 5) {
+                        console.log(`Starting progress interval for distance ${initialDistance.toFixed(1)}`);
+                        progressInterval = setInterval(sendProgressUpdate, 1000); // Check every second
                     }
 
                     // Create movement promise
@@ -518,13 +530,16 @@ class MinecraftBot {
                     const totalTime = Date.now() - startTime;
                     console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
 
+                    // Stop progress updates
+                    movementComplete = true;
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        console.log('Cleared progress interval - movement completed');
+                    }
+
                     // Send completion message
                     this.bot.chat(`Arrived at (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`);
-
-                    // Clean up event listener
-                    if (this.bot.pathfinder.removeListener) {
-                        this.bot.pathfinder.removeListener('path_update', progressHandler);
-                    }
 
                     return {
                         target: { x, y, z },
@@ -542,9 +557,12 @@ class MinecraftBot {
                 } catch (error) {
                     console.error(`Pathfinding failed:`, error);
 
-                    // Clean up event listener on error
-                    if (this.bot.pathfinder && this.bot.pathfinder.removeListener) {
-                        this.bot.pathfinder.removeListener('path_update', progressHandler);
+                    // Stop progress updates on error
+                    movementComplete = true;
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        console.log('Cleared progress interval - movement failed');
                     }
 
                     // Get current position even on failure
