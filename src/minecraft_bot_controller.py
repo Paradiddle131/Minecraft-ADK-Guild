@@ -360,3 +360,102 @@ class BotController:
         except Exception as e:
             logger.error(f"Drop item failed: {e}")
             return {"status": "error", "error": str(e)}
+
+    async def toss_item(self, item_type: str, count: int = 1, metadata: Optional[int] = None) -> Dict[str, Any]:
+        """Toss specific amount of an item type from inventory
+
+        Args:
+            item_type: Name or ID of item to toss
+            count: Number of items to toss (default 1)
+            metadata: Optional metadata for the item
+
+        Returns:
+            Dict with toss result
+        """
+        try:
+            result = await self.bridge_manager_instance.execute_command(
+                "toss", itemType=item_type, count=count, metadata=metadata
+            )
+
+            if result and hasattr(result, "success") and getattr(result, "success"):
+                # JSPyBridge proxy object with nested result
+                if hasattr(result, "result"):
+                    nested_result = getattr(result, "result")
+                    return {
+                        "status": "success",
+                        "tossed": getattr(nested_result, "tossed", count),
+                        "item": getattr(nested_result, "item", item_type),
+                    }
+                else:
+                    return {
+                        "status": "success",
+                        "tossed": getattr(result, "tossed", count),
+                        "item": getattr(result, "item", item_type),
+                    }
+            elif result and hasattr(result, "get") and result.get("success"):
+                # Dictionary-style result
+                return {
+                    "status": "success",
+                    "tossed": result.get("tossed", count),
+                    "item": result.get("item", item_type),
+                }
+            else:
+                error_msg = (
+                    result.get("error", "Unknown toss error")
+                    if result and hasattr(result, "get")
+                    else "No response from bot"
+                )
+                return {"status": "error", "error": error_msg}
+
+        except Exception as e:
+            logger.error(f"Toss item failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def toss_stack(self, slot_index: int) -> Dict[str, Any]:
+        """Toss entire stack from specific inventory slot
+
+        Args:
+            slot_index: Inventory slot index (0-based)
+
+        Returns:
+            Dict with toss result
+        """
+        try:
+            result = await self.bridge_manager_instance.execute_command("tossStack", slotIndex=slot_index)
+
+            if result and hasattr(result, "success") and getattr(result, "success"):
+                # JSPyBridge proxy object with nested result
+                if hasattr(result, "result"):
+                    nested_result = getattr(result, "result")
+                    return {
+                        "status": "success",
+                        "tossed": getattr(nested_result, "tossed", 0),
+                        "item": getattr(nested_result, "item", "unknown"),
+                        "slot": getattr(nested_result, "slot", slot_index),
+                    }
+                else:
+                    return {
+                        "status": "success",
+                        "tossed": getattr(result, "tossed", 0),
+                        "item": getattr(result, "item", "unknown"),
+                        "slot": getattr(result, "slot", slot_index),
+                    }
+            elif result and hasattr(result, "get") and result.get("success"):
+                # Dictionary-style result
+                return {
+                    "status": "success",
+                    "tossed": result.get("tossed", 0),
+                    "item": result.get("item", "unknown"),
+                    "slot": result.get("slot", slot_index),
+                }
+            else:
+                error_msg = (
+                    result.get("error", "Unknown toss stack error")
+                    if result and hasattr(result, "get")
+                    else "No response from bot"
+                )
+                return {"status": "error", "error": error_msg}
+
+        except Exception as e:
+            logger.error(f"Toss stack failed: {e}")
+            return {"status": "error", "error": str(e)}

@@ -936,6 +936,105 @@ class MinecraftBot {
                         error: error.message || 'Crafting failed'
                     };
                 }
+            },
+
+            // Item tossing
+            'toss': async ({ itemType, metadata = null, count = 1 }) => {
+                try {
+                    logger.info(`Attempting to toss ${count} ${itemType}`);
+
+                    // Convert itemType to item ID if it's a string name
+                    let itemId = itemType;
+                    if (typeof itemType === 'string') {
+                        const item = this.bot.registry.itemsByName[itemType];
+                        if (!item) {
+                            return {
+                                success: false,
+                                error: `Unknown item: ${itemType}`
+                            };
+                        }
+                        itemId = item.id;
+                    }
+
+                    // Check if we have the item in inventory
+                    const inventoryItems = this.bot.inventory.items();
+                    const targetItem = inventoryItems.find(item =>
+                        item.type === itemId && (metadata === null || item.metadata === metadata)
+                    );
+
+                    if (!targetItem) {
+                        return {
+                            success: false,
+                            error: `No ${itemType} found in inventory`
+                        };
+                    }
+
+                    if (targetItem.count < count) {
+                        return {
+                            success: false,
+                            error: `Only have ${targetItem.count} ${itemType}, cannot toss ${count}`
+                        };
+                    }
+
+                    // Toss the items
+                    await this.bot.toss(itemId, metadata, count);
+                    logger.info(`Successfully tossed ${count} ${itemType}`);
+
+                    return {
+                        success: true,
+                        result: {
+                            tossed: count,
+                            item: itemType,
+                            message: `Tossed ${count} ${itemType}`
+                        }
+                    };
+
+                } catch (error) {
+                    logger.error('Toss error:', error);
+                    return {
+                        success: false,
+                        error: error.message || 'Tossing failed'
+                    };
+                }
+            },
+
+            'tossStack': async ({ slotIndex }) => {
+                try {
+                    logger.info(`Attempting to toss stack from slot ${slotIndex}`);
+
+                    // Check if slot is valid and has an item
+                    const item = this.bot.inventory.slots[slotIndex];
+                    if (!item) {
+                        return {
+                            success: false,
+                            error: `No item in slot ${slotIndex}`
+                        };
+                    }
+
+                    const itemName = item.name;
+                    const itemCount = item.count;
+
+                    // Toss the entire stack
+                    await this.bot.tossStack(item);
+                    logger.info(`Successfully tossed stack of ${itemCount} ${itemName} from slot ${slotIndex}`);
+
+                    return {
+                        success: true,
+                        result: {
+                            tossed: itemCount,
+                            item: itemName,
+                            slot: slotIndex,
+                            message: `Tossed stack of ${itemCount} ${itemName} from slot ${slotIndex}`
+                        }
+                    };
+
+                } catch (error) {
+                    logger.error('Toss stack error:', error);
+                    return {
+                        success: false,
+                        error: error.message || 'Tossing stack failed'
+                    };
+                }
             }
         };
 

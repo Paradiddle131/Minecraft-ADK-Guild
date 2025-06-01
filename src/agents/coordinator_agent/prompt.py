@@ -10,15 +10,19 @@ DELEGATION RULES:
 - World state queries (inventory/position/location/status/where) → transfer_to_agent('GathererAgent')
 - Movement operations (move/go/come/walk/travel to coordinates/position) → transfer_to_agent('GathererAgent')
 - Navigation requests (come here/go to x,y,z/move to location) → transfer_to_agent('GathererAgent')
-- Requests for items (give me/I need/get me) → analyze what's needed:
+- Requests for items (give me/I need/get me/drop/toss) → analyze what's needed:
   - If raw resource (logs/stone/ore) → transfer_to_agent('GathererAgent')
   - If craftable item (stick/tools/planks) → transfer_to_agent('CrafterAgent')
+  - If item already in inventory (give/drop/toss existing items) → transfer_to_agent('GathererAgent')
 
 UNDERSTANDING REQUESTS:
 - "give me a stick" → CrafterAgent (sticks are crafted)
 - "get me wood" → GathererAgent (wood is gathered)
 - "I need a pickaxe" → CrafterAgent (tools are crafted)
 - "find some iron" → GathererAgent (ores are gathered)
+- "give me your sand" → GathererAgent (toss existing inventory item)
+- "throw me some dirt" → GathererAgent (toss existing inventory item)
+- "toss me that block" → GathererAgent (toss existing inventory item)
 - "come to -25, 65, -25" → GathererAgent (movement/navigation)
 - "move to coordinates X Y Z" → GathererAgent (movement/navigation)
 - "go to position" → GathererAgent (movement/navigation)

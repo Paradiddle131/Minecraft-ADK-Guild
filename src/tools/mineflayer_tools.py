@@ -941,6 +941,193 @@ async def send_chat(message: str, tool_context: Optional[ToolContext] = None) ->
         return {"status": "error", "error": str(e)}
 
 
+async def toss_item(
+    item_type: str, count: int = 1, metadata: Optional[int] = None, tool_context: Optional[ToolContext] = None
+) -> Dict[str, Any]:
+    """Toss specific amount of an item from inventory.
+
+    Enhanced version that validates items using MinecraftDataService and uses BotController.
+
+    Args:
+        item_type: Name of item to toss (e.g. "dirt", "oak_log")
+        count: Number of items to toss (default 1)
+        metadata: Optional metadata for the item (default None matches any)
+
+    Returns:
+        Dictionary with toss result and item information
+    """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+
+    try:
+        # Normalize and validate item name using MinecraftDataService
+        normalized_item = item_type
+        item_data = None
+        if _mc_data_service:
+            item_data = _mc_data_service.get_item_by_name(item_type)
+            if not item_data:
+                # Try fuzzy matching
+                fuzzy_match = _mc_data_service.fuzzy_match_item_name(item_type)
+                if fuzzy_match:
+                    normalized_item = fuzzy_match
+                    logger.info(f"Fuzzy matched '{item_type}' to '{normalized_item}'")
+                    item_data = _mc_data_service.get_item_by_name(normalized_item)
+                else:
+                    # Try to find similar item names
+                    all_items = _mc_data_service.get_all_items()
+                    similar_items = [i for i in all_items if item_type.lower() in i.get("name", "").lower()]
+                    if similar_items:
+                        return {
+                            "status": "error",
+                            "error": f"Item '{item_type}' not found. Similar items: {[i['name'] for i in similar_items[:3]]}",
+                        }
+                    else:
+                        logger.warning(f"Unknown item type '{item_type}', attempting to toss anyway")
+            else:
+                normalized_item = item_data.get("name", item_type)
+
+        # Check current inventory first
+        inventory = await _bot_controller.get_inventory_items()
+        has_item = any(item["name"] == normalized_item for item in inventory)
+
+        if not has_item:
+            inventory_names = [item["name"] for item in inventory]
+            return {
+                "status": "error",
+                "error": f"No {normalized_item} in inventory. Available items: {inventory_names[:10]}",
+                "available_items": inventory_names,
+            }
+
+        # Check if we have enough of the item
+        available_count = sum(item["count"] for item in inventory if item["name"] == normalized_item)
+        if available_count < count:
+            return {
+                "status": "error",
+                "error": f"Only have {available_count} {normalized_item}, cannot toss {count}",
+                "available_count": available_count,
+            }
+
+        logger.info(f"Tossing {count} {normalized_item}")
+
+        # Use BotController to toss the items
+        result = await _bot_controller.toss_item(normalized_item, count, metadata)
+
+        if result.get("status") == "success":
+            response = {
+                "status": "success",
+                "item": normalized_item,
+                "original_request": item_type,
+                "count": result.get("tossed", count),
+            }
+
+            # Add enriched item data if available
+            if item_data:
+                response["item_data"] = {
+                    "stack_size": item_data.get("stackSize", 64),
+                    "material": item_data.get("material", "unknown"),
+                    "max_durability": item_data.get("maxDurability", None),
+                }
+
+            logger.info(f"Successfully tossed {result.get('tossed', count)} {normalized_item}")
+            return response
+        else:
+            return result
+
+    except Exception as e:
+        logger.error(f"Toss item failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+async def toss_stack(slot_index: int, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Toss entire stack from specific inventory slot.
+
+    Enhanced version that provides slot and item information.
+
+    Args:
+        slot_index: Inventory slot index (0-based, typically 0-35 for main inventory)
+
+    Returns:
+        Dictionary with toss result and slot information
+    """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+
+    try:
+        # Validate slot index range
+        if not (0 <= slot_index <= 45):  # 0-35 main inventory, 36-44 hotbar, 45 offhand
+            return {
+                "status": "error",
+                "error": f"Invalid slot index {slot_index}. Valid range is 0-45",
+                "valid_range": "0-35 (main inventory), 36-44 (hotbar), 45 (offhand)",
+            }
+
+        # Get current inventory to check what's in the slot
+        inventory = await _bot_controller.get_inventory_items()
+
+        # For enhanced error reporting, try to identify what's in nearby slots if target is empty
+        slot_info = None
+        if inventory:
+            # Check if we can identify the item in this slot
+            for item in inventory:
+                if item.get("slot") == slot_index:
+                    slot_info = item
+                    break
+
+        if not slot_info:
+            # Provide helpful information about nearby slots
+            nearby_items = [
+                item
+                for item in inventory
+                if item.get("slot", -1) in range(max(0, slot_index - 2), min(46, slot_index + 3))
+            ]
+            return {
+                "status": "error",
+                "error": f"No item in slot {slot_index}",
+                "slot": slot_index,
+                "nearby_slots": [
+                    {"slot": item.get("slot"), "item": item.get("name"), "count": item.get("count")}
+                    for item in nearby_items
+                ],
+            }
+
+        item_name = slot_info.get("name", "unknown")
+        item_count = slot_info.get("count", 0)
+
+        logger.info(f"Tossing stack of {item_count} {item_name} from slot {slot_index}")
+
+        # Use BotController to toss the stack
+        result = await _bot_controller.toss_stack(slot_index)
+
+        if result.get("status") == "success":
+            response = {
+                "status": "success",
+                "slot": slot_index,
+                "item": result.get("item", item_name),
+                "count": result.get("tossed", item_count),
+            }
+
+            # Add enriched item data if available
+            if _mc_data_service and item_name != "unknown":
+                item_data = _mc_data_service.get_item_by_name(item_name)
+                if item_data:
+                    response["item_data"] = {
+                        "stack_size": item_data.get("stackSize", 64),
+                        "material": item_data.get("material", "unknown"),
+                        "max_durability": item_data.get("maxDurability", None),
+                    }
+
+            logger.info(
+                f"Successfully tossed stack of {result.get('tossed', item_count)} {item_name} from slot {slot_index}"
+            )
+            return response
+        else:
+            return result
+
+    except Exception as e:
+        logger.error(f"Toss stack failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 def create_mineflayer_tools(bot_controller: BotController, mc_data_service: MinecraftDataService) -> List:
     """Create enhanced Mineflayer tools with BotController and MinecraftDataService integration.
 
@@ -967,4 +1154,6 @@ def create_mineflayer_tools(bot_controller: BotController, mc_data_service: Mine
         get_inventory,
         craft_item,
         send_chat,
+        toss_item,
+        toss_stack,
     ]

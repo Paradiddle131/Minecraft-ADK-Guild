@@ -133,7 +133,7 @@ def create_gatherer_tools(bot_controller: BotController, mc_data_service: Minecr
         get_position_enhanced.__name__ = "get_position"
         enhanced_tools.append(get_position_enhanced)
 
-    required_tools = ["move_to", "place_block", "send_chat"]
+    required_tools = ["move_to", "place_block", "send_chat", "toss_item", "toss_stack"]
     missing_tools = []
 
     for tool_name in required_tools:
