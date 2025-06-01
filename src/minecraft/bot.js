@@ -97,7 +97,12 @@ class MinecraftBot {
         this.movements.scafoldingBlocks.push(this.bot.registry.itemsByName.dirt.id);
 
         this.bot.pathfinder.setMovements(this.movements);
-        logger.info('Pathfinder configured');
+
+        // Configure pathfinder timeout from environment variable
+        const pathfinderTimeout = parseInt(process.env.MINECRAFT_AGENT_PATHFINDER_TIMEOUT_MS) || 30000;
+        this.bot.pathfinder.timeout = pathfinderTimeout;
+
+        logger.info(`Pathfinder configured with timeout: ${pathfinderTimeout}ms`);
     }
 
     setupEventHandlers() {
@@ -373,6 +378,15 @@ class MinecraftBot {
                 const goal = new goals.GoalBlock(x, y, z);
                 const startPos = this.bot.entity.position.clone();
 
+                // Progress tracking variables - declared at function scope
+                let progressInterval = null;
+                let movementComplete = false;
+                let lastChatUpdate = 0;
+                let stuckCount = 0;
+                let lastDistance = null;
+                const chatUpdateInterval = 5000; // 5 seconds between chat updates
+                const stuckThreshold = 3;
+
                 try {
                     // Check if pathfinder is properly loaded
                     if (!this.bot.pathfinder) {
@@ -382,74 +396,200 @@ class MinecraftBot {
                     const startTime = Date.now();
                     console.log(`Starting pathfinding to (${x}, ${y}, ${z}) from (${startPos.x.toFixed(1)}, ${startPos.y.toFixed(1)}, ${startPos.z.toFixed(1)})`);
 
-                    // Track progress
-                    let lastProgressUpdate = 0;
-                    let pathStatus = 'computing';
-                    let timeoutId = null;
+                    // Initial distance calculation
+                    const initialDistance = Math.sqrt(
+                        Math.pow(startPos.x - x, 2) +
+                        Math.pow(startPos.y - y, 2) +
+                        Math.pow(startPos.z - z, 2)
+                    );
 
-                    // Progress tracking function
-                    const progressHandler = (result) => {
-                        pathStatus = result.status;
+                    // Send initial chat message
+                    this.bot.chat(`I'm at (${Math.floor(startPos.x)}, ${Math.floor(startPos.y)}, ${Math.floor(startPos.z)}) and I'm on my way to (${x}, ${y}, ${z}). Distance: ${Math.round(initialDistance)} blocks`);
+
+                    if (initialDistance > 5) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        this.bot.chat(`Starting navigation to (${x}, ${y}, ${z}) - will update every 5 seconds...`);
+                    }
+
+                    // Progress tracking using interval timer instead of events
+
+                    const sendProgressUpdate = () => {
+                        if (movementComplete) return;
+
                         const now = Date.now();
-                        if (now - lastProgressUpdate > 1000) { // Update every second
-                            const currentPos = this.bot.entity.position;
-                            const distanceToGoal = Math.sqrt(
-                                Math.pow(currentPos.x - x, 2) +
-                                Math.pow(currentPos.y - y, 2) +
-                                Math.pow(currentPos.z - z, 2)
-                            );
+                        const currentPos = this.bot.entity.position;
+                        const distanceToGoal = Math.sqrt(
+                            Math.pow(currentPos.x - x, 2) +
+                            Math.pow(currentPos.y - y, 2) +
+                            Math.pow(currentPos.z - z, 2)
+                        );
 
-                            // Emit progress event
-                            if (this.eventEmitter) {
-                                this.eventEmitter.emitMovementProgressEvent({
-                                    target: { x, y, z },
-                                    current_position: {
-                                        x: Math.floor(currentPos.x),
-                                        y: Math.floor(currentPos.y),
-                                        z: Math.floor(currentPos.z)
-                                    },
-                                    distance_remaining: distanceToGoal,
-                                    path_status: result.status,
-                                    elapsed_time: now - startTime
-                                });
+                        const isMoving = this.bot.pathfinder.isMoving();
+                        console.log(`Progress check: distance=${Math.round(distanceToGoal)}, moving=${isMoving}`);
+
+                        // If we're very close to destination (within 2 blocks) and not moving, consider it arrived
+                        if (distanceToGoal < 2 && !isMoving) {
+                            console.log('Bot appears to have reached destination - stopping progress updates');
+                            clearInterval(progressInterval);
+                            progressInterval = null;
+                            return;
+                        }
+
+                        // Emit progress event for Python
+                        if (this.eventEmitter) {
+                            this.eventEmitter.emitMovementProgressEvent({
+                                target: { x, y, z },
+                                current_position: {
+                                    x: Math.floor(currentPos.x),
+                                    y: Math.floor(currentPos.y),
+                                    z: Math.floor(currentPos.z)
+                                },
+                                distance_remaining: distanceToGoal,
+                                path_status: isMoving ? 'moving' : 'idle',
+                                elapsed_time: now - startTime
+                            });
+                        }
+
+                        // Send chat updates every 5 seconds for long movements
+                        if (initialDistance > 5 && now - lastChatUpdate > chatUpdateInterval) {
+                            console.log(`Sending chat update: distance=${Math.round(distanceToGoal)}, lastDistance=${lastDistance}`);
+
+                            // Check if stuck (only if still moving or distance is significant)
+                            if (lastDistance !== null && Math.abs(lastDistance - distanceToGoal) < 0.5 && (isMoving || distanceToGoal > 3)) {
+                                stuckCount++;
+                                console.log(`Bot might be stuck: stuckCount=${stuckCount}`);
+                                if (stuckCount >= stuckThreshold) {
+                                    this.bot.chat(`Navigation appears stuck at ${Math.round(distanceToGoal)} blocks - may need manual help`);
+                                } else {
+                                    this.bot.chat(`Navigation progress: ${Math.round(distanceToGoal)} blocks remaining (might be finding path around obstacles)`);
+                                }
+                            } else {
+                                // Normal progress
+                                stuckCount = 0;
+                                const progressMade = initialDistance - distanceToGoal;
+                                const progressPercent = (progressMade / initialDistance) * 100;
+                                console.log(`Sending normal progress: ${progressPercent.toFixed(0)}% complete`);
+                                this.bot.chat(`Moving... ${Math.round(distanceToGoal)} blocks remaining (${progressPercent.toFixed(0)}% complete)`);
                             }
 
-                            console.log(`Path progress: status=${result.status}, distance=${distanceToGoal.toFixed(1)}`);
-                            lastProgressUpdate = now;
+                            lastDistance = distanceToGoal;
+                            lastChatUpdate = now;
+
+                            // Stop updates if stuck for too long
+                            if (stuckCount >= stuckThreshold + 2) {
+                                console.log('Bot appears stuck after multiple updates, stopping progress reporting');
+                                clearInterval(progressInterval);
+                                progressInterval = null;
+                            }
+
+                            // Stop if very close to target
+                            if (distanceToGoal < 2) {
+                                console.log('Very close to target, stopping progress updates');
+                                clearInterval(progressInterval);
+                                progressInterval = null;
+                            }
                         }
                     };
 
-                    // Attach progress handler to pathfinder, not bot
-                    if (this.bot.pathfinder.on) {
-                        this.bot.pathfinder.on('path_update', progressHandler);
+                    // Start progress updates for long movements
+                    if (initialDistance > 5) {
+                        console.log(`Starting progress interval for distance ${initialDistance.toFixed(1)}`);
+                        progressInterval = setInterval(sendProgressUpdate, 1000); // Check every second
                     }
 
                     // Create movement promise
                     const movementPromise = new Promise(async (resolve, reject) => {
                         try {
-                            // Set timeout
-                            timeoutId = setTimeout(() => {
-                                console.log('Movement timeout - stopping pathfinder');
-                                this.bot.pathfinder.stop();
-                                reject(new Error(`Movement timeout after ${timeout}ms`));
-                            }, timeout);
+                            let lastProgressTime = Date.now();
+                            let stuckCheckCount = 0;
+                            const maxStuckChecks = 5; // Allow 5 consecutive stuck checks before timeout
+
+                            // Intelligent timeout that considers progress and pathfinder state
+                            const checkTimeout = () => {
+                                const now = Date.now();
+                                const timeSinceStart = now - startTime;
+
+                                // Only timeout if we've exceeded the time AND haven't made progress recently
+                                if (timeSinceStart > timeout) {
+                                    console.log('Hard timeout reached - stopping pathfinder');
+                                    movementComplete = true;
+                                    if (progressInterval) {
+                                        clearInterval(progressInterval);
+                                        progressInterval = null;
+                                        console.log('Cleared progress interval - hard timeout');
+                                    }
+                                    this.bot.pathfinder.stop();
+                                    reject(new Error(`Movement timeout after ${timeout}ms`));
+                                    return;
+                                }
+
+                                // Check if bot appears truly stuck (not moving and not making progress)
+                                const currentPos = this.bot.entity.position;
+                                const currentDistance = Math.sqrt(
+                                    Math.pow(currentPos.x - x, 2) +
+                                    Math.pow(currentPos.y - y, 2) +
+                                    Math.pow(currentPos.z - z, 2)
+                                );
+
+                                const isMoving = this.bot.pathfinder.isMoving();
+
+                                // If bot is very close to target, consider it arrived even if not "moving"
+                                if (currentDistance < 2) {
+                                    console.log('Bot is very close to target, considering movement complete');
+                                    movementComplete = true;
+                                    if (progressInterval) {
+                                        clearInterval(progressInterval);
+                                        progressInterval = null;
+                                    }
+                                    resolve();
+                                    return;
+                                }
+
+                                // Check for progress or active pathfinding
+                                const madeRecentProgress = lastDistance !== null && Math.abs(lastDistance - currentDistance) > 0.1;
+
+                                if (!isMoving && !madeRecentProgress) {
+                                    stuckCheckCount++;
+                                    console.log(`Bot appears stuck: count=${stuckCheckCount}/${maxStuckChecks}, distance=${currentDistance.toFixed(1)}`);
+
+                                    if (stuckCheckCount >= maxStuckChecks) {
+                                        console.log('Bot appears permanently stuck - stopping pathfinder');
+                                        movementComplete = true;
+                                        if (progressInterval) {
+                                            clearInterval(progressInterval);
+                                            progressInterval = null;
+                                            console.log('Cleared progress interval - stuck detection');
+                                        }
+                                        this.bot.pathfinder.stop();
+                                        reject(new Error(`Bot stuck at distance ${currentDistance.toFixed(1)} from target`));
+                                        return;
+                                    }
+                                } else {
+                                    // Reset stuck counter if making progress or moving
+                                    stuckCheckCount = 0;
+                                    if (madeRecentProgress) {
+                                        lastProgressTime = now;
+                                    }
+                                }
+
+                                // Continue checking
+                                if (!movementComplete) {
+                                    setTimeout(checkTimeout, 2000); // Check every 2 seconds
+                                }
+                            };
+
+                            // Start intelligent timeout checking
+                            setTimeout(checkTimeout, 2000);
 
                             // Execute goto and wait for completion
                             await this.bot.pathfinder.goto(goal);
 
-                            // Clear timeout on success
-                            if (timeoutId) {
-                                clearTimeout(timeoutId);
-                                timeoutId = null;
-                            }
-
+                            // Success - clear any pending timeouts
+                            movementComplete = true;
                             resolve();
                         } catch (error) {
-                            // Clear timeout on error
-                            if (timeoutId) {
-                                clearTimeout(timeoutId);
-                                timeoutId = null;
-                            }
+                            // Error occurred - ensure cleanup
+                            movementComplete = true;
                             reject(error);
                         }
                     });
@@ -468,10 +608,16 @@ class MinecraftBot {
                     const totalTime = Date.now() - startTime;
                     console.log(`Reached destination (${x}, ${y}, ${z}) in ${totalTime}ms, actual distance: ${distance.toFixed(2)}`);
 
-                    // Clean up event listener
-                    if (this.bot.pathfinder.removeListener) {
-                        this.bot.pathfinder.removeListener('path_update', progressHandler);
+                    // Stop progress updates
+                    movementComplete = true;
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        console.log('Cleared progress interval - movement completed');
                     }
+
+                    // Send completion message
+                    this.bot.chat(`Arrived at (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`);
 
                     return {
                         target: { x, y, z },
@@ -489,27 +635,28 @@ class MinecraftBot {
                 } catch (error) {
                     console.error(`Pathfinding failed:`, error);
 
-                    // Clean up event listener on error
-                    if (this.bot.pathfinder && this.bot.pathfinder.removeListener) {
-                        this.bot.pathfinder.removeListener('path_update', progressHandler);
+                    // Stop progress updates on error
+                    movementComplete = true;
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        console.log('Cleared progress interval - movement failed');
                     }
 
                     // Get current position even on failure
                     const pos = this.bot.entity.position;
-                    const partialDistance = Math.sqrt(
-                        Math.pow(pos.x - startPos.x, 2) +
-                        Math.pow(pos.y - startPos.y, 2) +
-                        Math.pow(pos.z - startPos.z, 2)
-                    );
 
                     const errorMsg = error.message || error.toString();
 
                     // Check for specific error types
                     if (errorMsg.includes('timeout')) {
+                        this.bot.chat(`Movement timed out after ${timeout}ms. Try again or increase the timeout.`);
                         throw new Error(`Movement timeout: Failed to reach (${x}, ${y}, ${z}) within ${timeout}ms`);
                     } else if (errorMsg.includes('No path')) {
+                        this.bot.chat('Movement failed - couldn\'t reach destination');
                         throw new Error(`No path found to (${x}, ${y}, ${z}). The location may be blocked or unreachable.`);
                     } else {
+                        this.bot.chat('Movement failed - couldn\'t reach destination');
                         throw new Error(`Movement failed: ${errorMsg}`);
                     }
                 }
