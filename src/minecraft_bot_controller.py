@@ -125,6 +125,19 @@ class BotController:
             logger.error(f"Start digging failed: {e}")
             return {"status": "error", "error": str(e)}
 
+    async def dig_block(self, x: int, y: int, z: int) -> Dict[str, Any]:
+        """Dig a block at specific coordinates
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            z: Z coordinate
+
+        Returns:
+            Dict with dig result
+        """
+        return await self.start_digging([x, y, z])
+
     async def stop_digging(self) -> Dict[str, Any]:
         """Stop current digging action
 
@@ -266,16 +279,16 @@ class BotController:
             # Handle JavaScript proxy objects that behave like lists
             if isinstance(result, list):
                 return result
-            elif hasattr(result, '__len__') and hasattr(result, '__iter__'):
+            elif hasattr(result, "__len__") and hasattr(result, "__iter__"):
                 # Convert proxy object to Python list
                 python_list = []
                 for item in result:
                     # Try to extract x, y, z coordinates from proxy objects
                     try:
                         # Access coordinates directly from the proxy object
-                        x = getattr(item, 'x', None)
-                        y = getattr(item, 'y', None) 
-                        z = getattr(item, 'z', None)
+                        x = getattr(item, "x", None)
+                        y = getattr(item, "y", None)
+                        z = getattr(item, "z", None)
                         if x is not None and y is not None and z is not None:
                             python_list.append({"x": x, "y": y, "z": z})
                         else:

@@ -371,12 +371,37 @@ class MinecraftBot {
     async routeCommand(method, args) {
         const handlers = {
             // Movement commands
-            'pathfinder.goto': async ({ x, y, z, timeout }) => {
+            'pathfinder.goto': async ({ x, y, z, timeout, goal_type = 'smart', range = 2 }) => {
                 // Timeout must be provided by Python caller
                 if (!timeout) {
                     throw new Error('Movement timeout not specified - must be provided by caller');
                 }
-                const goal = new goals.GoalBlock(x, y, z);
+
+                let goal;
+
+                if (goal_type === 'smart') {
+                    // Smart default: Use GoalNear to prevent collision issues
+                    goal = new goals.GoalNear(x, y, z, range);
+                    logger.info(`Smart goal: Using GoalNear with range ${range}`);
+                } else {
+                    switch (goal_type) {
+                        case 'near':
+                            goal = new goals.GoalNear(x, y, z, range);
+                            logger.info(`Using GoalNear with range ${range}`);
+                            break;
+                        case 'block':
+                            goal = new goals.GoalBlock(x, y, z);
+                            logger.info(`Using GoalBlock for exact position`);
+                            break;
+                        case 'adjacent':
+                            goal = new goals.GoalGetToBlock(x, y, z);
+                            logger.info(`Using GoalGetToBlock for interaction`);
+                            break;
+                        default:
+                            goal = new goals.GoalNear(x, y, z, range);
+                            logger.warn(`Unknown goal_type '${goal_type}', defaulting to GoalNear`);
+                    }
+                }
                 const startPos = this.bot.entity.position.clone();
 
                 // Progress tracking variables - declared at function scope
@@ -686,6 +711,18 @@ class MinecraftBot {
 
             // Block interaction
             'dig': async ({ x, y, z }) => {
+                // First move near the block (not into it)
+                const moveResult = await handlers['pathfinder.goto']({
+                    x, y, z,
+                    timeout: 15000,
+                    goal_type: 'near',
+                    range: 2
+                });
+
+                if (!moveResult.status || moveResult.status !== 'completed') {
+                    throw new Error('Could not reach block for mining');
+                }
+
                 const block = this.bot.blockAt(new Vec3(x, y, z));
                 if (!block) throw new Error('No block at position');
 
@@ -754,7 +791,7 @@ class MinecraftBot {
             'world.findBlocks': async ({ matching, maxDistance = 64, count = 1 }) => {
                 // matching can be block IDs or block names - resolve to actual registry IDs
                 const matchingIds = Array.isArray(matching) ? matching : [matching];
-                
+
                 // Convert any block names to IDs using bot's actual registry
                 const resolvedIds = matchingIds.map(blockIdOrName => {
                     if (typeof blockIdOrName === 'string') {

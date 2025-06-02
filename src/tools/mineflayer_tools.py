@@ -149,7 +149,18 @@ async def dig_block(x: int, y: int, z: int, tool_context: Optional[ToolContext] 
     try:
         # Get block information first
         block_info = await _bot_controller.get_block_at(x, y, z)
-        block_name = block_info.get("name", "unknown")
+
+        # Handle proxy objects from JSPyBridge
+        if block_info is None:
+            block_name = "unknown"
+        elif isinstance(block_info, dict):
+            block_name = block_info.get("name", "unknown")
+        else:
+            # Try to access as attribute for proxy objects
+            try:
+                block_name = getattr(block_info, "name", "unknown")
+            except Exception:
+                block_name = "unknown"
 
         if block_name == "air":
             return {"status": "error", "error": "No block to dig at this position"}
@@ -162,7 +173,7 @@ async def dig_block(x: int, y: int, z: int, tool_context: Optional[ToolContext] 
         logger.info(f"Digging {block_name} at ({x}, {y}, {z})")
 
         # Start digging
-        result = await _bot_controller.start_digging([x, y, z])
+        result = await _bot_controller.dig_block(x, y, z)
 
         if result.get("status") == "success":
             response = {"status": "success", "block": block_name, "position": {"x": x, "y": y, "z": z}}
