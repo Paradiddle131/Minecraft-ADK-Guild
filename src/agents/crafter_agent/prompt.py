@@ -22,7 +22,7 @@ CRAFTING WORKFLOW:
 3. If requested item not in inventory:
    - IMMEDIATELY call craft_item(recipe="<item_name>", count=<number>)
    - Do NOT skip this step even if you see no materials
-   - Example: craft_item(recipe="sticks", count=1)
+   - Example: craft_item(recipe="stick", count=1)
 4. The craft_item tool will:
    - Succeed if materials are available
    - Fail with specific error if materials missing
@@ -33,7 +33,7 @@ MINECRAFT RECIPE KNOWLEDGE:
 
 Basic Materials (use these EXACT recipe names):
 - planks: 1 log → 4 planks (recipe="planks")
-- sticks: 2 planks → 4 sticks (recipe="sticks")
+- stick: 2 planks → 4 sticks (recipe="stick")
 - torch: 1 coal + 1 stick → 4 torches
 
 Tools (all require 2 sticks in middle column):

@@ -743,6 +743,11 @@ class MinecraftDataService:
         # Normalize the request
         normalized_type = item_type.lower().strip()
 
+        # Check for exact match first
+        exact_item = self.get_item_by_name(normalized_type)
+        if exact_item:
+            return normalized_type
+
         # Find all items that could match this generic type
         all_items = self.get_all_items()
         matching_items = []
