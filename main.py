@@ -1,6 +1,6 @@
 """
 Main entry point for the Minecraft Multi-Agent System
-Orchestrates CoordinatorAgent with GathererAgent and CrafterAgent sub-agents
+Orchestrates CoordinatorAgent with GathererAgent and CrafterAgent using AgentTool pattern
 """
 
 import argparse
@@ -11,13 +11,10 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from src.agents import CoordinatorAgent, CrafterAgent, GathererAgent
+from src.agents.coordinator_agent.agent import create_coordinator_agent
 from src.bridge.bridge_manager import BridgeManager
 from src.config import get_config, setup_google_ai_credentials
 from src.logging_config import get_logger, setup_logging
-from src.minecraft_bot_controller import BotController
-from src.minecraft_data_service import MinecraftDataService
-from src.tools.agent_tools import create_crafter_tools, create_gatherer_tools
 
 logger = get_logger(__name__)
 
@@ -25,21 +22,21 @@ logger = get_logger(__name__)
 command_queue = asyncio.Queue()
 
 
-async def setup_agents(bridge_manager: BridgeManager, config=None):
-    """Setup the multi-agent system with coordinator and sub-agents
+async def setup_system(bridge_manager: BridgeManager, config=None):
+    """Setup the multi-agent system with coordinator agent
 
     Args:
         bridge_manager: Initialized BridgeManager for Minecraft interaction
         config: Optional configuration object
 
     Returns:
-        Tuple of (coordinator, runner, session_service)
+        Tuple of (runner, session_service)
     """
     config = config or get_config()
 
     # Setup Google AI credentials
     try:
-        ai_credentials = setup_google_ai_credentials(config)
+        setup_google_ai_credentials(config)
         logger.info("Google AI credentials configured successfully")
     except ValueError as e:
         logger.error(f"Failed to setup Google AI credentials: {e}")
@@ -48,62 +45,17 @@ async def setup_agents(bridge_manager: BridgeManager, config=None):
     # Create session service
     session_service = InMemorySessionService()
 
-    # Create shared services
-    minecraft_version = getattr(config, "minecraft_version", "1.21.1")
-    mc_data_service = MinecraftDataService(minecraft_version)
-    bot_controller = BotController(bridge_manager)
+    # Create runner
+    runner = Runner(app_name="minecraft_multiagent", session_service=session_service)
 
-    # Create sub-agents
-    gatherer = GathererAgent(
-        name="GathererAgent",
-        model=config.default_model,
-        tools=[],  # Tools will be set after agent creation
-        session_service=session_service,
-        bridge_manager=bridge_manager,
-        ai_credentials=ai_credentials,
-        config=config,
-        mc_data_service=mc_data_service,
-        bot_controller=bot_controller,
-    )
+    # Create coordinator agent with AgentTool pattern
+    coordinator = create_coordinator_agent(runner)
 
-    crafter = CrafterAgent(
-        name="CrafterAgent",
-        model=config.default_model,
-        tools=[],  # Tools will be set after agent creation
-        session_service=session_service,
-        bridge_manager=bridge_manager,
-        ai_credentials=ai_credentials,
-        config=config,
-        mc_data_service=mc_data_service,
-        bot_controller=bot_controller,
-    )
-
-    # Now create enhanced tools with bot controller and minecraft data service
-    gatherer_tools = create_gatherer_tools(gatherer.bot_controller, gatherer.mc_data)
-    crafter_tools = create_crafter_tools(crafter.bot_controller, crafter.mc_data)
-
-    # Update agents with tools
-    gatherer.tools = gatherer_tools
-    crafter.tools = crafter_tools
-
-    # Create coordinator with sub-agents
-    coordinator = CoordinatorAgent(
-        name="CoordinatorAgent",
-        model=config.default_model,
-        sub_agents=[gatherer.create_agent(), crafter.create_agent()],
-        session_service=session_service,
-        bridge_manager=bridge_manager,
-        ai_credentials=ai_credentials,
-        config=config,
-        mc_data_service=mc_data_service,
-        bot_controller=bot_controller,
-    )
-
-    # Create runner for the coordinator
-    runner = Runner(agent=coordinator.create_agent(), app_name="minecraft_multiagent", session_service=session_service)
+    # Set the agent on the runner
+    runner.agent = coordinator
 
     logger.info("Multi-agent system setup complete")
-    return coordinator, runner, session_service
+    return runner, session_service
 
 
 async def initialize_session(session_service: InMemorySessionService):
@@ -120,11 +72,14 @@ async def initialize_session(session_service: InMemorySessionService):
     )
     logger.info("Created new session for interactive mode")
 
+    # Initialize the session state
+    await session.set({"minecraft": {"connected": True}})
+
     return session
 
 
 async def process_command(command: str, runner: Runner, session):
-    """Process a single command
+    """Process a single command ensuring coordinator handles it
 
     Args:
         command: User command to process
@@ -135,6 +90,9 @@ async def process_command(command: str, runner: Runner, session):
         Agent response string
     """
     logger.info(f"Processing command: {command}")
+
+    # Always ensure coordinator is the active agent
+    # This is automatic with AgentTool pattern
 
     # Create user message
     user_content = types.Content(role="user", parts=[types.Part(text=command)])
@@ -225,8 +183,8 @@ async def main():
         logger.info("Initializing connection to Minecraft...")
         await bridge.initialize()
 
-        # Setup agents
-        _, runner, session_service = await setup_agents(bridge, config)
+        # Setup system with new architecture
+        runner, session_service = await setup_system(bridge, config)
 
         # Initialize session
         session = await initialize_session(session_service)

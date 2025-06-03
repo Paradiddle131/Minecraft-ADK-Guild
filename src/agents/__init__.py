@@ -1,7 +1,4 @@
-"""Agents module - Multi-agent system for Minecraft"""
+"""Agent modules for the Minecraft ADK Guild system."""
 
-from .coordinator_agent.agent import CoordinatorAgent
-from .crafter_agent.agent import CrafterAgent
-from .gatherer_agent.agent import GathererAgent
-
-__all__ = ["CoordinatorAgent", "GathererAgent", "CrafterAgent"]
+# The agents are now created via factory functions, not classes
+# See individual agent modules for create_*_agent() functions
