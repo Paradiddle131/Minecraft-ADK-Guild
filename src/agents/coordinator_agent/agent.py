@@ -35,8 +35,8 @@ def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_da
     # Add sub-agents as AgentTools
     tools.extend(
         [
-            AgentTool(agent=gatherer_agent, name="gatherer_tool"),
-            AgentTool(agent=crafter_agent, name="crafter_tool"),
+            AgentTool(agent=gatherer_agent),
+            AgentTool(agent=crafter_agent),
         ]
     )
 
