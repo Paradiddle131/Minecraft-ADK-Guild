@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from google.adk.agents import LlmAgent
 from google.adk.tools.agent_tool import AgentTool
 
-from ...tools.mineflayer_tools import get_mineflayer_tools
+from ...tools.mineflayer_tools import create_mineflayer_tools
 from ..crafter_agent.agent import create_crafter_agent
 from ..gatherer_agent.agent import create_gatherer_agent
 from .prompt import COORDINATOR_PROMPT
@@ -14,21 +14,23 @@ if TYPE_CHECKING:
     from google.adk.common import Runner
 
 
-def create_coordinator_agent(runner: "Runner") -> LlmAgent:
+def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_data_service=None) -> LlmAgent:
     """Create the coordinator agent with AgentTool pattern.
 
     Args:
         runner: The ADK runner instance for agent creation
+        bot_controller: BotController instance
+        mc_data_service: MinecraftDataService instance
 
     Returns:
         Configured coordinator agent that orchestrates all operations
     """
     # Create sub-agents (they don't need runner since they use output_key)
-    gatherer_agent = create_gatherer_agent()
-    crafter_agent = create_crafter_agent()
+    gatherer_agent = create_gatherer_agent(bot_controller, mc_data_service)
+    crafter_agent = create_crafter_agent(bot_controller, mc_data_service)
 
     # Get base tools
-    tools = get_mineflayer_tools()
+    tools = create_mineflayer_tools(bot_controller, mc_data_service)
 
     # Add sub-agents as AgentTools
     tools.extend(

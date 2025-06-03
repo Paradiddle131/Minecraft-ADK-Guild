@@ -15,6 +15,8 @@ from src.agents.coordinator_agent.agent import create_coordinator_agent
 from src.bridge.bridge_manager import BridgeManager
 from src.config import get_config, setup_google_ai_credentials
 from src.logging_config import get_logger, setup_logging
+from src.minecraft_bot_controller import BotController
+from src.minecraft_data_service import MinecraftDataService
 
 logger = get_logger(__name__)
 
@@ -45,14 +47,16 @@ async def setup_system(bridge_manager: BridgeManager, config=None):
     # Create session service
     session_service = InMemorySessionService()
 
-    # Create runner
-    runner = Runner(app_name="minecraft_multiagent", session_service=session_service)
+    # Initialize singleton services
+    bot_controller = BotController(bridge_manager)
+    minecraft_version = getattr(config, "minecraft_version", "1.21.1")
+    mc_data_service = MinecraftDataService(minecraft_version)
 
     # Create coordinator agent with AgentTool pattern
-    coordinator = create_coordinator_agent(runner)
+    coordinator = create_coordinator_agent(runner=None, bot_controller=bot_controller, mc_data_service=mc_data_service)
 
-    # Set the agent on the runner
-    runner.agent = coordinator
+    # Create runner with the agent
+    runner = Runner(agent=coordinator, app_name="minecraft_multiagent", session_service=session_service)
 
     logger.info("Multi-agent system setup complete")
     return runner, session_service
