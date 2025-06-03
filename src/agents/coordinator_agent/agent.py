@@ -2,8 +2,8 @@
 
 from typing import TYPE_CHECKING
 
-from google.adk import LlmAgent
-from google.adk.tools import AgentTool
+from google.adk.agents import LlmAgent
+from google.adk.tools.agent_tool import AgentTool
 
 from ...tools.mineflayer_tools import get_mineflayer_tools
 from ..crafter_agent.agent import create_crafter_agent

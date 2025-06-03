@@ -1,6 +1,6 @@
 """Crafter Agent - Specialized agent for crafting operations."""
 
-from google.adk import LlmAgent
+from google.adk.agents import LlmAgent
 
 from ...tools.mineflayer_tools import get_mineflayer_tools
 from .prompt import CRAFTER_PROMPT

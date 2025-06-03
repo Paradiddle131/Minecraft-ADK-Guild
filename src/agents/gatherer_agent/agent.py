@@ -1,6 +1,6 @@
 """Gatherer Agent - Specialized agent for resource gathering."""
 
-from google.adk import LlmAgent
+from google.adk.agents import LlmAgent
 
 from ...tools.mineflayer_tools import get_mineflayer_tools
 from .prompt import GATHERER_PROMPT
