@@ -76,8 +76,7 @@ async def initialize_session(session_service: InMemorySessionService):
     )
     logger.info("Created new session for interactive mode")
 
-    # Initialize the session state
-    await session.set({"minecraft": {"connected": True}})
+    # Session state will be managed by agents
 
     return session
 
