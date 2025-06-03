@@ -42,8 +42,8 @@ def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_da
 
     # Create coordinator with tools only (no sub_agents)
     coordinator = LlmAgent(
-        runner=runner,
         name="CoordinatorAgent",
+        model="gemini-2.0-flash",
         instruction=COORDINATOR_PROMPT,
         tools=tools,
     )

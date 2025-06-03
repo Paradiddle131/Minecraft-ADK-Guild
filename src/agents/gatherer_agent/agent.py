@@ -18,6 +18,7 @@ def create_gatherer_agent(bot_controller=None, mc_data_service=None) -> LlmAgent
     """
     gatherer = LlmAgent(
         name="GathererAgent",
+        model="gemini-2.0-flash",
         instruction=GATHERER_PROMPT,
         output_key="gathering_result",  # Structured output to state
         tools=create_mineflayer_tools(bot_controller, mc_data_service),

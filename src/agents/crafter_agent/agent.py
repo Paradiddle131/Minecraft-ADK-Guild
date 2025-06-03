@@ -18,6 +18,7 @@ def create_crafter_agent(bot_controller=None, mc_data_service=None) -> LlmAgent:
     """
     crafter = LlmAgent(
         name="CrafterAgent",
+        model="gemini-2.0-flash",
         instruction=CRAFTER_PROMPT,
         output_key="crafting_result",  # Structured output to state
         tools=create_mineflayer_tools(bot_controller, mc_data_service),
