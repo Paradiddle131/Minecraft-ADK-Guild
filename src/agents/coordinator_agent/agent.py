@@ -2,10 +2,12 @@
 
 from typing import TYPE_CHECKING
 
+import structlog
 from google.adk.agents import LlmAgent
 from google.adk.tools.agent_tool import AgentTool
 
 from ...tools.mineflayer_tools import create_mineflayer_tools
+from ..callbacks import get_configured_callbacks
 from ..crafter_agent.agent import create_crafter_agent
 from ..gatherer_agent.agent import create_gatherer_agent
 from .prompt import COORDINATOR_PROMPT
@@ -40,12 +42,20 @@ def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_da
         ]
     )
 
+    # Get configured callbacks
+    callbacks = get_configured_callbacks()
+
     # Create coordinator with tools only (no sub_agents)
+    # Register callbacks individually as per ADK API
     coordinator = LlmAgent(
         name="CoordinatorAgent",
         model="gemini-2.0-flash",
         instruction=COORDINATOR_PROMPT,
         tools=tools,
+        **callbacks,  # Unpack callback dict to pass as individual parameters
     )
+
+    # Add logger for callbacks to use
+    coordinator._logger = structlog.get_logger(f"agents.{coordinator.name}")
 
     return coordinator

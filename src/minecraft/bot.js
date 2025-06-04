@@ -742,11 +742,18 @@ class MinecraftBot {
 
             // Inventory
             'inventory.items': async () => {
-                return this.bot.inventory.items().map(item => ({
+                if (!this.bot) throw new Error('Bot not initialized');
+                if (!this.bot.inventory) throw new Error('Bot inventory not available');
+
+                const items = this.bot.inventory.items();
+
+                const mappedItems = items.map(item => ({
                     name: item.name,
                     count: item.count,
                     slot: item.slot
                 }));
+
+                return mappedItems;
             },
 
             'inventory.equip': async ({ item, destination = 'hand' }) => {

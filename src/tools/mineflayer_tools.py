@@ -1,6 +1,7 @@
 """
 Mineflayer Tools for Google ADK - Wraps Minecraft bot commands as ADK tools
 """
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from google.adk.tools import ToolContext
@@ -442,6 +443,23 @@ async def find_blocks(
         return {"status": "error", "error": "BotController not initialized"}
 
     try:
+        # First check if bot is properly spawned by getting position
+        pos_result = await _bot_controller.get_position()
+        if pos_result.get("status") == "error":
+            return {
+                "status": "error",
+                "error": "Cannot find blocks - bot is not properly connected or spawned",
+                "details": pos_result.get("error", "Unknown position error"),
+            }
+
+        # Check for default error position
+        current_pos = pos_result.get("position", {})
+        if current_pos.get("x") == 0 and current_pos.get("z") == 0 and current_pos.get("y") in [0, 64]:
+            return {
+                "status": "error",
+                "error": "Bot position not properly initialized. Please wait for bot to fully spawn.",
+                "bot_position": current_pos,
+            }
         # Handle patterns and wildcards using MinecraftDataService
         block_ids = []
         matching_blocks = []
@@ -566,6 +584,9 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
         return {"status": "error", "error": "BotController not initialized"}
 
     try:
+        # Add a small delay to ensure inventory is synchronized after crafting
+        await asyncio.sleep(0.1)
+
         items = await _bot_controller.get_inventory_items()
 
         # Organize by item type with enhanced data
