@@ -9,29 +9,28 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-def log_agent_thoughts_callback(callback_context: Any) -> None:
+def log_agent_thoughts_callback(callback_context: Any, llm_response: Any) -> None:
     """
     Callback triggered after model generates a response.
     Logs agent thoughts and tool calls.
 
     Args:
-        callback_context: ADK callback context with llm_response
+        callback_context: ADK callback context
+        llm_response: The LLM response object
 
     Returns:
         None to proceed with original response
     """
     try:
-        agent = callback_context.agent
-        agent_logger = getattr(agent, "_logger", logger)
-        agent_name = getattr(agent, "name", "UnknownAgent")
+        # Get agent name from callback context
+        agent_name = callback_context.agent_name or "UnknownAgent"
+        # Use module logger for now (agents don't have direct access in callback)
+        agent_logger = logger.bind(agent=agent_name)
         timestamp = datetime.utcnow().isoformat()
-
-        # Access the LLM response
-        llm_response = callback_context.llm_response
 
         # Log text responses (thoughts)
         if hasattr(llm_response, "text") and llm_response.text:
-            agent_logger.debug("agent_thought", agent=agent_name, thought=llm_response.text, timestamp=timestamp)
+            agent_logger.debug("agent_thought", thought=llm_response.text, timestamp=timestamp)
 
         # Log tool calls from the response
         if hasattr(llm_response, "candidates") and llm_response.candidates:
@@ -42,7 +41,6 @@ def log_agent_thoughts_callback(callback_context: Any) -> None:
                         if hasattr(part, "function_call"):
                             agent_logger.info(
                                 "agent_tool_call",
-                                agent=agent_name,
                                 tool=part.function_call.name,
                                 args=dict(part.function_call.args) if hasattr(part.function_call, "args") else {},
                                 timestamp=timestamp,
@@ -66,30 +64,35 @@ def log_agent_thoughts_callback(callback_context: Any) -> None:
     return None
 
 
-def log_tool_invocation_start_callback(tool_context: Any) -> None:
+def log_tool_invocation_start_callback(tool_context: Any, **kwargs) -> None:
     """
     Callback triggered before tool execution.
     Logs tool invocation with context.
 
     Args:
         tool_context: ADK tool context with tool info
+        **kwargs: Additional keyword arguments from ADK
 
     Returns:
         None to proceed with tool execution
     """
     try:
-        agent = tool_context.agent
-        agent_logger = getattr(agent, "_logger", logger)
-        agent_name = getattr(agent, "name", "UnknownAgent")
+        # Get agent name and tool info
+        agent_name = tool_context.agent_name or "UnknownAgent"
+        agent_logger = logger.bind(agent=agent_name)
 
-        # Log tool invocation start
-        state_snapshot = dict(tool_context.session.state) if hasattr(tool_context, "session") else {}
+        # Extract tool information from kwargs
+        tool = kwargs.get("tool")
+        tool_name = getattr(tool, "name", "unknown_tool") if tool else "unknown_tool"
+        tool_args = kwargs.get("args", {})
+
+        # Get current state snapshot
+        state_snapshot = dict(tool_context.state) if hasattr(tool_context, "state") else {}
 
         agent_logger.debug(
             "tool_invocation_start",
-            agent=agent_name,
-            tool=tool_context.tool_name,
-            args=tool_context.tool_args if hasattr(tool_context, "tool_args") else {},
+            tool=tool_name,
+            args=tool_args,
             state_snapshot=state_snapshot,
             timestamp=datetime.utcnow().isoformat(),
         )
@@ -103,21 +106,27 @@ def log_tool_invocation_start_callback(tool_context: Any) -> None:
     return None
 
 
-def log_tool_invocation_end_callback(tool_context: Any) -> None:
+def log_tool_invocation_end_callback(tool_context: Any, tool_response: Any, **kwargs) -> None:
     """
     Callback triggered after tool execution.
     Logs tool result and duration.
 
     Args:
-        tool_context: ADK tool context with tool result
+        tool_context: ADK tool context
+        tool_response: The response from the tool
+        **kwargs: Additional keyword arguments from ADK
 
     Returns:
         None to use original tool result
     """
     try:
-        agent = tool_context.agent
-        agent_logger = getattr(agent, "_logger", logger)
-        agent_name = getattr(agent, "name", "UnknownAgent")
+        # Get agent name
+        agent_name = tool_context.agent_name or "UnknownAgent"
+        agent_logger = logger.bind(agent=agent_name)
+
+        # Extract tool name from kwargs
+        tool = kwargs.get("tool")
+        tool_name = getattr(tool, "name", "unknown_tool") if tool else "unknown_tool"
 
         # Calculate duration if start time was stored
         duration_ms = None
@@ -127,22 +136,18 @@ def log_tool_invocation_end_callback(tool_context: Any) -> None:
         # Log tool completion
         agent_logger.debug(
             "tool_invocation_complete",
-            agent=agent_name,
-            tool=tool_context.tool_name,
+            tool=tool_name,
             duration_ms=duration_ms,
-            result=tool_context.tool_result if hasattr(tool_context, "tool_result") else {},
+            result=tool_response if tool_response else {},
             timestamp=datetime.utcnow().isoformat(),
         )
 
         # Log state changes if any
-        if hasattr(tool_context, "session"):
-            current_state = dict(tool_context.session.state)
-            # In the before callback, we'd need to store the previous state
-            # For now, just log that state may have changed
+        if hasattr(tool_context, "state"):
+            current_state = dict(tool_context.state)
             agent_logger.debug(
                 "state_after_tool",
-                agent=agent_name,
-                tool=tool_context.tool_name,
+                tool=tool_name,
                 current_state=current_state,
                 timestamp=datetime.utcnow().isoformat(),
             )
