@@ -1003,6 +1003,93 @@ async def send_chat(message: str, tool_context: Optional[ToolContext] = None) ->
         return {"status": "error", "error": str(e)}
 
 
+async def get_blocks_by_pattern(pattern: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Find all block types matching a pattern.
+
+    This tool allows agents to discover block types when users mention generic terms.
+    For example, "stairs" can be resolved to all stair block types.
+
+    Args:
+        pattern: Pattern to search for in block names (e.g., "stairs", "_log", "oak")
+
+    Returns:
+        Dictionary with list of matching block names
+    """
+    if not _mc_data_service:
+        return {"status": "error", "error": "MinecraftDataService not initialized"}
+
+    try:
+        blocks = _mc_data_service.get_blocks_by_pattern(pattern)
+        block_names = [b["name"] for b in blocks]
+
+        logger.info(f"Found {len(block_names)} blocks matching pattern '{pattern}'")
+
+        return {"status": "success", "blocks": block_names, "count": len(block_names)}
+    except Exception as e:
+        logger.error(f"Failed to get blocks by pattern: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+async def find_blocks_nearby(
+    block_pattern: str, radius: int = 20, count: int = 100, tool_context: Optional[ToolContext] = None
+) -> Dict[str, Any]:
+    """Find all blocks matching a pattern within radius of the bot.
+
+    This is a convenience tool that combines pattern matching with block finding.
+    Useful for requests like "remove the stairs nearby" or "find wood around here".
+
+    Args:
+        block_pattern: Pattern to search for (e.g., "stairs", "_log", "stone")
+        radius: Search radius in blocks (default: 20)
+        count: Maximum number of blocks to return per type (default: 100)
+
+    Returns:
+        Dictionary with all found block positions grouped by type
+    """
+    if not _mc_data_service or not _bot_controller:
+        return {"status": "error", "error": "Services not initialized"}
+
+    try:
+        # Get all block types matching the pattern
+        blocks = _mc_data_service.get_blocks_by_pattern(block_pattern)
+        block_names = [b["name"] for b in blocks]
+
+        if not block_names:
+            return {
+                "status": "success",
+                "message": f"No block types found matching pattern '{block_pattern}'",
+                "positions": [],
+                "blocks_by_type": {},
+                "total_count": 0,
+            }
+
+        logger.info(f"Searching for {len(block_names)} block types matching '{block_pattern}' within radius {radius}")
+
+        all_positions = []
+        blocks_by_type = {}
+
+        # Find blocks of each type
+        for block_name in block_names:
+            positions = await _bot_controller.find_blocks(block_name, radius, count)
+            if positions:  # find_blocks returns a list directly
+                blocks_by_type[block_name] = positions
+                all_positions.extend(positions)
+                logger.info(f"Found {len(positions)} {block_name} blocks")
+
+        return {
+            "status": "success",
+            "positions": all_positions,
+            "blocks_by_type": blocks_by_type,
+            "total_count": len(all_positions),
+            "block_types_found": list(blocks_by_type.keys()),
+            "search_pattern": block_pattern,
+            "radius": radius,
+        }
+    except Exception as e:
+        logger.error(f"Failed to find blocks by pattern: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 async def toss_item(
     item_type: str, count: int = 1, metadata: Optional[int] = None, tool_context: Optional[ToolContext] = None
 ) -> Dict[str, Any]:
@@ -1212,6 +1299,8 @@ def create_mineflayer_tools(bot_controller: BotController, mc_data_service: Mine
         get_position,
         get_movement_status,
         find_blocks,
+        get_blocks_by_pattern,
+        find_blocks_nearby,
         get_nearby_players,
         get_inventory,
         craft_item,
