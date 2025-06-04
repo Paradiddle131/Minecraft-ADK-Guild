@@ -1,186 +1,273 @@
-"""
-Callback functions for ADK agents
-These callbacks provide logging and monitoring capabilities for agent thoughts
-"""
+"""Enhanced callbacks for comprehensive agent communication logging."""
+import os
+import time
+from datetime import datetime
+from typing import Any, Callable, Dict, Optional
 
-from typing import Any, Optional
+import structlog
 
-from ..logging_config import get_logger
-
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
-def log_agent_thoughts_callback(**kwargs) -> Optional[Any]:
-    """Callback to log agent's raw LLM response including reasoning
-
-    This callback is called after the LLM generates a response but before
-    it's processed further. It logs the agent's full response including
-    internal reasoning/thoughts.
+def log_agent_thoughts_callback(callback_context: Any, **kwargs) -> None:
+    """
+    Callback triggered after model generates a response.
+    Logs agent thoughts and tool calls.
 
     Args:
-        **kwargs: Keyword arguments passed by ADK framework
-            - callback_context: CallbackContext containing agent info and state
-            - llm_response: The LlmResponse object from the model
+        callback_context: ADK callback context
+        **kwargs: Additional arguments including llm_response
 
     Returns:
-        None - allows normal processing to continue
-        LlmResponse - to replace the original response
+        None to proceed with original response
     """
     try:
-        callback_context = kwargs.get("callback_context")
+        # Extract llm_response from kwargs
         llm_response = kwargs.get("llm_response")
+        if not llm_response:
+            return None
 
-        agent_name = getattr(callback_context, "agent_name", "Unknown Agent") if callback_context else "Unknown Agent"
+        # Get agent name from callback context
+        agent_name = getattr(callback_context, "agent_name", "UnknownAgent")
 
-        if llm_response and hasattr(llm_response, "content"):
-            logger.info(f"{'='*40}")
-            logger.info(f"🤖 {agent_name} THOUGHTS AND RESPONSE:")
-            logger.info(f"{'='*40}")
+        # Try to get agent logger from invocation context
+        invocation_context = getattr(callback_context, "_invocation_context", None)
+        agent = None
+        if invocation_context:
+            agent = getattr(invocation_context, "agent", None)
 
-            if hasattr(llm_response.content, "parts"):
-                for part in llm_response.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        logger.info(f"{part.text}")
-                    elif hasattr(part, "function_call"):
-                        logger.info(f"Tool Call: {part.function_call.name}")
-                        if hasattr(part.function_call, "args"):
-                            logger.info(f"Arguments: {part.function_call.args}")
+        if agent and hasattr(agent, "_logger"):
+            agent_logger = agent._logger
+        else:
+            # Fallback to module logger with agent binding
+            agent_logger = logger.bind(agent=agent_name)
 
-            logger.info(f"{'='*40}")
+        timestamp = datetime.utcnow().isoformat()
+
+        # Check if this is a text response (agent thinking)
+        # ADK wraps the actual response, we need to check the content
+        if hasattr(llm_response, "content") and llm_response.content:
+            # For text responses
+            agent_logger.debug("agent_thought", thought=str(llm_response.content)[:500], timestamp=timestamp)
+            print(f"\n💭 [{agent_name}] Thinking: {str(llm_response.content)[:200]}...")
+
+        # Check if there are function calls in the response
+        if hasattr(llm_response, "function_calls") and llm_response.function_calls:
+            for func_call in llm_response.function_calls:
+                func_name = getattr(func_call, "name", "unknown")
+                func_args = getattr(func_call, "args", {})
+
+                agent_logger.info(
+                    "agent_tool_call",
+                    tool=func_name,
+                    args=dict(func_args) if func_args else {},
+                    timestamp=timestamp,
+                )
+                print(f"🔧 [{agent_name}] Calling tool: {func_name}")
+
+                # Check if it's a tool delegation (AgentTool)
+                if func_name in ["GathererAgent", "CrafterAgent"]:
+                    agent_logger.info(
+                        "agent_delegation",
+                        from_agent=agent_name,
+                        to_agent=func_name,
+                        task=dict(func_args) if func_args else {},
+                        timestamp=timestamp,
+                    )
+                    print(f"→ [{agent_name}] Delegating to {func_name}")
 
     except Exception as e:
-        logger.error(f"Error in thought logging callback: {e}")
+        logger.error("Error in agent thoughts callback", error=str(e), exc_info=True)
 
+    # Return None to proceed with original response
     return None
 
 
-def log_tool_execution_callback(**kwargs) -> Optional[dict]:
-    """Callback to log tool execution results
-
-    This callback is called after a tool executes, logging its results
-    for debugging and monitoring.
+def log_tool_invocation_start_callback(tool_context: Any, **kwargs) -> None:
+    """
+    Callback triggered before tool execution.
+    Logs tool invocation with context.
 
     Args:
-        **kwargs: Keyword arguments passed by ADK framework
-            - tool_context: ToolContext containing agent/tool info and state
-            - tool: The Tool object that was executed
-            - tool_response: The tool's response dictionary
+        tool_context: ADK tool context with tool info
+        **kwargs: Additional arguments including tool details
 
     Returns:
-        None - uses original tool response
-        dict - to replace the tool response
+        None to proceed with tool execution
     """
     try:
-        tool_context = kwargs.get("tool_context")
-        tool = kwargs.get("tool")
-        tool_response = kwargs.get("tool_response")
+        # Get agent and tool info from context
+        agent_name = getattr(tool_context, "agent_name", "UnknownAgent")
 
-        tool_name = getattr(tool, "name", "Unknown Tool") if tool else "Unknown Tool"
-        agent_name = getattr(tool_context, "agent_name", "Unknown Agent") if tool_context else "Unknown Agent"
+        # Try to get agent logger from invocation context
+        invocation_context = getattr(tool_context, "_invocation_context", None)
+        agent = None
+        if invocation_context:
+            agent = getattr(invocation_context, "agent", None)
 
-        logger.info("--- Tool Execution Complete ---")
-        logger.info(f"Agent: {agent_name}")
-        logger.info(f"Tool: {tool_name}")
-        logger.info(f"Result: {tool_response}")
-        logger.info("-------------------------------")
+        if agent and hasattr(agent, "_logger"):
+            agent_logger = agent._logger
+        else:
+            agent_logger = logger.bind(agent=agent_name)
+
+        # Extract tool info from kwargs
+        tool = kwargs.get("tool", {})
+        tool_name = getattr(tool, "name", kwargs.get("tool_name", "unknown"))
+        tool_args = kwargs.get("args", {})
+
+        # Log tool invocation start
+        # The state object is an ADK State object, not a dict
+        state_obj = getattr(tool_context, "state", None)
+        state_snapshot = {}
+        if state_obj:
+            try:
+                # Try to get a snapshot of state keys we care about
+                for key in ["minecraft.inventory", "minecraft.position", "task.current"]:
+                    if hasattr(state_obj, "get"):
+                        val = state_obj.get(key)
+                        if val is not None:
+                            state_snapshot[key] = val
+            except Exception:
+                # If state access fails, just use empty snapshot
+                pass
+
+        agent_logger.debug(
+            "tool_invocation_start",
+            tool=tool_name,
+            args=tool_args,
+            state_snapshot=state_snapshot,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+
+        # Store start time in context for duration calculation
+        tool_context._start_time = time.perf_counter()
 
     except Exception as e:
-        logger.error(f"Error in tool logging callback: {e}")
+        logger.error("Error in tool invocation start callback", error=str(e), exc_info=True)
 
     return None
 
 
-def log_tool_call_callback(**kwargs) -> Optional[dict]:
-    """Callback to log tool calls before execution
-
-    This callback is called before a tool executes, logging the call
-    for debugging and monitoring.
+def log_tool_invocation_end_callback(tool_context: Any, **kwargs) -> None:
+    """
+    Callback triggered after tool execution.
+    Logs tool result and duration.
 
     Args:
-        **kwargs: Keyword arguments passed by ADK framework
-            - tool_context: ToolContext containing agent/tool info and state
-            - tool: The Tool object about to be executed
-            - args: The arguments being passed to the tool
+        tool_context: ADK tool context with tool result
+        **kwargs: Additional arguments including tool result
 
     Returns:
-        None - executes tool with original args
-        dict - to skip tool execution and use this as result
+        None to use original tool result
     """
     try:
-        tool_context = kwargs.get("tool_context")
-        tool = kwargs.get("tool")
-        args = kwargs.get("args")
+        # Get agent info from context
+        agent_name = getattr(tool_context, "agent_name", "UnknownAgent")
 
-        tool_name = getattr(tool, "name", "Unknown Tool") if tool else "Unknown Tool"
-        agent_name = getattr(tool_context, "agent_name", "Unknown Agent") if tool_context else "Unknown Agent"
+        # Try to get agent logger from invocation context
+        invocation_context = getattr(tool_context, "_invocation_context", None)
+        agent = None
+        if invocation_context:
+            agent = getattr(invocation_context, "agent", None)
 
-        logger.info("--- Tool Call ---")
-        logger.info(f"Agent: {agent_name}")
-        logger.info(f"Tool: {tool_name}")
-        logger.info(f"Arguments: {args}")
-        logger.info("-----------------")
+        if agent and hasattr(agent, "_logger"):
+            agent_logger = agent._logger
+        else:
+            agent_logger = logger.bind(agent=agent_name)
+
+        # Extract tool info from kwargs
+        tool = kwargs.get("tool", {})
+        tool_name = getattr(tool, "name", kwargs.get("tool_name", "unknown"))
+        tool_result = kwargs.get("result", {})
+
+        # Calculate duration if start time was stored
+        duration_ms = None
+        if hasattr(tool_context, "_start_time"):
+            duration_ms = (time.perf_counter() - tool_context._start_time) * 1000
+
+        # Log tool completion
+        agent_logger.debug(
+            "tool_invocation_complete",
+            tool=tool_name,
+            duration_ms=duration_ms,
+            result=tool_result,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+
+        if duration_ms:
+            print(f"✓ [{agent_name}] Tool {tool_name} completed in {duration_ms:.0f}ms")
+
+        # Log state changes if any
+        # The state object is an ADK State object, not a dict
+        state_obj = getattr(tool_context, "state", None)
+        current_state = {}
+        if state_obj:
+            try:
+                # Try to get a snapshot of state keys we care about
+                for key in ["minecraft.inventory", "minecraft.position", "task.current"]:
+                    if hasattr(state_obj, "get"):
+                        val = state_obj.get(key)
+                        if val is not None:
+                            current_state[key] = val
+            except Exception:
+                # If state access fails, just use empty snapshot
+                pass
+        # In the before callback, we'd need to store the previous state
+        # For now, just log that state may have changed
+        agent_logger.debug(
+            "state_after_tool",
+            tool=tool_name,
+            current_state=current_state,
+            timestamp=datetime.utcnow().isoformat(),
+        )
 
     except Exception as e:
-        logger.error(f"Error in tool call logging callback: {e}")
+        logger.error("Error in tool invocation end callback", error=str(e), exc_info=True)
 
     return None
 
 
-def log_before_agent_callback(**kwargs) -> Optional[Any]:
-    """Callback to log when an agent starts execution
-
-    This helps track which agent is currently active in the multi-agent flow.
-
-    Args:
-        **kwargs: Keyword arguments passed by ADK framework
-            - callback_context: CallbackContext containing agent info and state
+def get_configured_callbacks() -> Dict[str, Optional[Callable]]:
+    """
+    Get dict of callbacks based on environment configuration.
 
     Returns:
-        None - allows normal agent execution
+        Dict mapping callback types to callback functions
     """
-    try:
-        callback_context = kwargs.get("callback_context")
-        agent_name = getattr(callback_context, "agent_name", "Unknown Agent") if callback_context else "Unknown Agent"
+    callbacks = {}
 
-        logger.info(f"{'*'*40}")
-        logger.info(f"▶️  AGENT STARTING: {agent_name}")
-        logger.info(f"{'*'*40}")
+    # Check environment variables for which callbacks to enable
+    if os.getenv("MINECRAFT_AGENT_LOG_AGENT_THOUGHTS", "true").lower() == "true":
+        callbacks["after_model_callback"] = log_agent_thoughts_callback
 
-        # Log any relevant state that might indicate why this agent was called
-        if callback_context and hasattr(callback_context, "state"):
-            user_request = callback_context.state.get("user_request")
-            if user_request:
-                logger.info(f"Processing request: {user_request}")
+    if os.getenv("MINECRAFT_AGENT_LOG_TOOL_CALLS", "true").lower() == "true":
+        callbacks["before_tool_callback"] = log_tool_invocation_start_callback
+        callbacks["after_tool_callback"] = log_tool_invocation_end_callback
 
-        logger.info("")
-
-    except Exception as e:
-        logger.error(f"Error in before agent callback: {e}")
-
-    return None
+    return callbacks
 
 
-def log_after_agent_callback(**kwargs) -> Optional[Any]:
-    """Callback to log when an agent completes execution
+# Legacy callbacks for backward compatibility
+def log_agent_communication_callback(response: Any, agent: Any) -> None:
+    """Legacy callback - no longer used."""
+    pass
 
-    This helps track agent completion and results in the multi-agent flow.
 
-    Args:
-        **kwargs: Keyword arguments passed by ADK framework
-            - callback_context: CallbackContext containing agent info and state
+def log_state_changes_callback(tool_response: Any, agent: Any, previous_state: Dict[str, Any]) -> None:
+    """Legacy callback - state changes now logged in after_tool_callback."""
+    pass
 
-    Returns:
-        None - uses original agent response
-    """
-    try:
-        callback_context = kwargs.get("callback_context")
-        agent_name = getattr(callback_context, "agent_name", "Unknown Agent") if callback_context else "Unknown Agent"
 
-        logger.info(f"{'*'*40}")
-        logger.info(f"✅ AGENT COMPLETE: {agent_name}")
-        logger.info(f"{'*'*40}")
+def log_tool_invocation_callback(tool_call: Any, agent: Any) -> Callable:
+    """Legacy callback - replaced by before/after_tool_callback."""
+    pass
 
-    except Exception as e:
-        logger.error(f"Error in after agent callback: {e}")
 
-    return None
+def log_agent_delegation_callback(tool_call: Any, agent: Any) -> None:
+    """Legacy callback - delegation now logged in after_model_callback."""
+    pass
+
+
+def log_function_calls_callback(response: Any, agent: Any) -> None:
+    """Legacy callback - no longer used."""
+    pass

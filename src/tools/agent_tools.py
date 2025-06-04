@@ -236,7 +236,7 @@ def create_crafter_tools(bot_controller: BotController, mc_data_service: Minecra
 
                 # Check if we have crafting table access
                 has_crafting_table = any(item.get("name") == "crafting_table" for item in inventory)
-                tool_context.state["has_crafting_table"] = has_crafting_table
+                tool_context.state[StateKeys.MINECRAFT_HAS_CRAFTING_TABLE] = has_crafting_table
 
                 logger.info(f"Inventory check for crafting: {len(materials)} material types")
 

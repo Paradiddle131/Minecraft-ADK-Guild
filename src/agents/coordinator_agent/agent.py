@@ -1,102 +1,61 @@
-"""
-CoordinatorAgent - Main interface for user communication and task delegation
-Implements ADK multi-agent patterns for orchestrating GathererAgent and CrafterAgent
-"""
+"""Coordinator Agent - Main orchestrator for all Minecraft operations."""
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING
 
+import structlog
 from google.adk.agents import LlmAgent
-from google.adk.sessions import InMemorySessionService
+from google.adk.tools.agent_tool import AgentTool
 
-from ...bridge.bridge_manager import BridgeManager
-from ...logging_config import get_logger
-from ..base_minecraft_agent import BaseMinecraftAgent
-from ..callbacks import (
-    log_after_agent_callback,
-    log_agent_thoughts_callback,
-    log_before_agent_callback,
-    log_tool_call_callback,
-    log_tool_execution_callback,
-)
-from .prompt import COORDINATOR_INSTRUCTIONS
+from ...tools.mineflayer_tools import create_mineflayer_tools
+from ..callbacks import get_configured_callbacks
+from ..crafter_agent.agent import create_crafter_agent
+from ..gatherer_agent.agent import create_gatherer_agent
+from .prompt import COORDINATOR_PROMPT
 
-logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from google.adk.common import Runner
 
 
-class CoordinatorAgent(BaseMinecraftAgent):
-    """Main coordinator agent that handles user interaction and delegates to sub-agents"""
+def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_data_service=None) -> LlmAgent:
+    """Create the coordinator agent with AgentTool pattern.
 
-    def __init__(
-        self,
-        name: str = "CoordinatorAgent",
-        model: Optional[str] = None,
-        sub_agents: Optional[List[Any]] = None,
-        session_service: Optional[InMemorySessionService] = None,
-        bridge_manager: Optional[BridgeManager] = None,
-        ai_credentials: Optional[Dict[str, Any]] = None,
-        config=None,
-        mc_data_service=None,
-        bot_controller=None,
-    ):
-        """Initialize the coordinator agent
+    Args:
+        runner: The ADK runner instance for agent creation
+        bot_controller: BotController instance
+        mc_data_service: MinecraftDataService instance
 
-        Args:
-            name: Agent name for identification
-            model: LLM model to use
-            sub_agents: List of sub-agents (GathererAgent, CrafterAgent)
-            session_service: ADK session service for state management
-            bridge_manager: Shared BridgeManager instance
-            ai_credentials: Google AI credentials
-            config: Agent configuration
-            mc_data_service: Optional shared MinecraftDataService instance
-            bot_controller: Optional shared BotController instance
-        """
-        # Initialize base class with optional shared services
-        super().__init__(name, bridge_manager, config, mc_data_service, bot_controller)
+    Returns:
+        Configured coordinator agent that orchestrates all operations
+    """
+    # Create sub-agents (they don't need runner since they use output_key)
+    gatherer_agent = create_gatherer_agent(bot_controller, mc_data_service)
+    crafter_agent = create_crafter_agent(bot_controller, mc_data_service)
 
-        self.model = model or (config.default_model if config else "gemini-2.0-flash")
-        self.sub_agents = sub_agents or []
-        self.session_service = session_service
-        if ai_credentials:
-            self.ai_credentials = ai_credentials
-        self.agent = None
+    # Get base tools
+    tools = create_mineflayer_tools(bot_controller, mc_data_service)
 
-        logger.info(f"Initializing {self.name} with {len(self.sub_agents)} sub-agents")
+    # Add sub-agents as AgentTools
+    tools.extend(
+        [
+            AgentTool(agent=gatherer_agent),
+            AgentTool(agent=crafter_agent),
+        ]
+    )
 
-    def _create_instruction(self) -> str:
-        """Create the coordinator's instruction prompt
+    # Get configured callbacks
+    callbacks = get_configured_callbacks()
 
-        Returns:
-            Instruction string for the LLM
-        """
-        return COORDINATOR_INSTRUCTIONS
+    # Create coordinator with tools only (no sub_agents)
+    # Register callbacks individually as per ADK API
+    coordinator = LlmAgent(
+        name="CoordinatorAgent",
+        model="gemini-2.0-flash",
+        instruction=COORDINATOR_PROMPT,
+        tools=tools,
+        **callbacks,  # Unpack callback dict to pass as individual parameters
+    )
 
-    def create_agent(self) -> LlmAgent:
-        """Create the ADK LlmAgent instance
+    # Add logger for callbacks to use
+    coordinator._logger = structlog.get_logger(f"agents.{coordinator.name}")
 
-        Returns:
-            Configured LlmAgent for coordination
-        """
-        # Get sub-agent names for the instruction
-        sub_agent_names = [agent.name for agent in self.sub_agents]
-        instruction = self._create_instruction().format(sub_agent_names=", ".join(sub_agent_names))
-
-        # Configure the coordinator agent with transfer settings
-        agent_config = {
-            "name": self.name,
-            "model": self.model,
-            "instruction": instruction,
-            "description": "Main coordinator for Minecraft multi-agent system",
-            "sub_agents": self.sub_agents,
-            "output_key": "coordinator_response",
-            "before_agent_callback": log_before_agent_callback,
-            "after_agent_callback": log_after_agent_callback,
-            "after_model_callback": log_agent_thoughts_callback,
-            "before_tool_callback": log_tool_call_callback,
-            "after_tool_callback": log_tool_execution_callback,
-        }
-
-        self.agent = LlmAgent(**agent_config)
-        logger.info(f"{self.name} created with sub-agents: {sub_agent_names}")
-
-        return self.agent
+    return coordinator

@@ -1,5 +1,5 @@
 """Coordinator Agent module exports."""
 
-from .agent import CoordinatorAgent
+from .agent import create_coordinator_agent
 
-__all__ = ["CoordinatorAgent"]
+__all__ = ["create_coordinator_agent"]
