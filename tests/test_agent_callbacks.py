@@ -21,23 +21,27 @@ class TestAgentThoughtsCallback:
         callback_context = Mock()
         callback_context.agent_name = "CoordinatorAgent"
 
-        # Create llm_response mock
+        # Mock invocation context and agent
+        invocation_context = Mock()
+        agent = Mock()
+        agent._logger = mock_logger
+        invocation_context.agent = agent
+        callback_context._invocation_context = invocation_context
+
+        # Mock LLM response
         llm_response = Mock()
-        llm_response.text = "I need to gather oak logs first, then craft planks."
-        llm_response.candidates = []
+        llm_response.content = "I need to gather oak logs first, then craft planks."
+        llm_response.function_calls = []
 
         # Act
-        with patch("src.agents.callbacks.logger", mock_logger):
-            result = log_agent_thoughts_callback(callback_context, llm_response)
+        result = log_agent_thoughts_callback(callback_context, llm_response=llm_response)
 
         # Assert
         assert result is None  # Should return None to proceed
-        mock_logger.bind.assert_called_once_with(agent="CoordinatorAgent")
-        bound_logger = mock_logger.bind.return_value
-        bound_logger.debug.assert_called_once()
-        call_args = bound_logger.debug.call_args
+        mock_logger.debug.assert_called_once()
+        call_args = mock_logger.debug.call_args
         assert call_args[0][0] == "agent_thought"
-        assert call_args[1]["thought"] == "I need to gather oak logs first, then craft planks."
+        assert "I need to gather oak logs first, then craft planks." in call_args[1]["thought"]
         assert "timestamp" in call_args[1]
 
     def test_should_log_tool_calls_when_agent_uses_tools(self):
@@ -45,33 +49,34 @@ class TestAgentThoughtsCallback:
         # Arrange
         mock_logger = Mock()
 
-        # Create function call mock
+        # Create callback context mock
+        callback_context = Mock()
+        callback_context.agent_name = "GathererAgent"
+
+        # Mock invocation context and agent
+        invocation_context = Mock()
+        agent = Mock()
+        agent._logger = mock_logger
+        invocation_context.agent = agent
+        callback_context._invocation_context = invocation_context
+
+        # Mock function call
         function_call = Mock()
         function_call.name = "find_nearest_blocks"
         function_call.args = {"block_type": "oak_log", "count": 5}
 
-        # Create part with function call
-        part = Mock()
-        part.function_call = function_call
-
-        # Create callback context
-        callback_context = Mock()
-        callback_context.agent_name = "GathererAgent"
-
-        # Create llm_response mock
+        # Mock LLM response
         llm_response = Mock()
-        llm_response.text = None
-        llm_response.candidates = [Mock(content=Mock(parts=[part]))]
+        llm_response.content = None
+        llm_response.function_calls = [function_call]
 
         # Act
-        with patch("src.agents.callbacks.logger", mock_logger):
-            result = log_agent_thoughts_callback(callback_context, llm_response)
+        result = log_agent_thoughts_callback(callback_context, llm_response=llm_response)
 
         # Assert
         assert result is None
-        bound_logger = mock_logger.bind.return_value
-        bound_logger.info.assert_called_once()
-        call_args = bound_logger.info.call_args
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
         assert call_args[0][0] == "agent_tool_call"
         assert call_args[1]["tool"] == "find_nearest_blocks"
         assert call_args[1]["args"] == {"block_type": "oak_log", "count": 5}
@@ -81,34 +86,37 @@ class TestAgentThoughtsCallback:
         # Arrange
         mock_logger = Mock()
 
-        # Create function call for agent delegation
+        # Create callback context mock
+        callback_context = Mock()
+        callback_context.agent_name = "CoordinatorAgent"
+
+        # Mock invocation context and agent
+        invocation_context = Mock()
+        agent = Mock()
+        agent._logger = mock_logger
+        invocation_context.agent = agent
+        callback_context._invocation_context = invocation_context
+
+        # Mock function call for agent delegation
         function_call = Mock()
         function_call.name = "GathererAgent"
         function_call.args = {"task": "gather 5 oak logs"}
 
-        part = Mock()
-        part.function_call = function_call
-
-        callback_context = Mock()
-        callback_context.agent_name = "CoordinatorAgent"
-
-        # Create llm_response mock
+        # Mock LLM response
         llm_response = Mock()
-        llm_response.text = None
-        llm_response.candidates = [Mock(content=Mock(parts=[part]))]
+        llm_response.content = None
+        llm_response.function_calls = [function_call]
 
         # Act
-        with patch("src.agents.callbacks.logger", mock_logger):
-            result = log_agent_thoughts_callback(callback_context, llm_response)
+        result = log_agent_thoughts_callback(callback_context, llm_response=llm_response)
 
         # Assert
         assert result is None
-        bound_logger = mock_logger.bind.return_value
-        assert bound_logger.info.call_count == 2  # Both tool call and delegation
+        assert mock_logger.info.call_count == 2  # Both tool call and delegation
 
         # Check delegation log
         delegation_call = None
-        for call in bound_logger.info.call_args_list:
+        for call in mock_logger.info.call_args_list:
             if call[0][0] == "agent_delegation":
                 delegation_call = call
                 break
@@ -127,29 +135,40 @@ class TestToolInvocationCallbacks:
         # Arrange
         mock_logger = Mock()
 
+        # Create tool context mock
         tool_context = Mock()
         tool_context.agent_name = "CrafterAgent"
-        tool_context.state = {"minecraft.inventory": {"oak_log": 1}}
 
-        tool_mock = Mock()
-        tool_mock.name = "craft_item"
+        # Mock invocation context and agent
+        invocation_context = Mock()
+        agent = Mock()
+        agent._logger = mock_logger
+        invocation_context.agent = agent
+        tool_context._invocation_context = invocation_context
 
-        kwargs = {"tool": tool_mock, "args": {"item_name": "oak_planks", "quantity": 4}}
+        # Mock state
+        state = Mock()
+        state.get = Mock(side_effect=lambda key: {"oak_log": 1} if key == "minecraft.inventory" else None)
+        tool_context.state = state
+
+        # Mock tool
+        tool = Mock()
+        tool.name = "craft_item"
 
         # Act
-        with patch("src.agents.callbacks.logger", mock_logger):
-            with patch("time.perf_counter", return_value=1000.0):
-                result = log_tool_invocation_start_callback(tool_context, **kwargs)
+        with patch("time.perf_counter", return_value=1000.0):
+            result = log_tool_invocation_start_callback(
+                tool_context, tool=tool, args={"item_name": "oak_planks", "quantity": 4}
+            )
 
         # Assert
         assert result is None
-        bound_logger = mock_logger.bind.return_value
-        bound_logger.debug.assert_called_once()
-        call_args = bound_logger.debug.call_args
+        mock_logger.debug.assert_called_once()
+        call_args = mock_logger.debug.call_args
         assert call_args[0][0] == "tool_invocation_start"
         assert call_args[1]["tool"] == "craft_item"
         assert call_args[1]["args"] == {"item_name": "oak_planks", "quantity": 4}
-        assert call_args[1]["state_snapshot"] == {"minecraft.inventory": {"oak_log": 1}}
+        assert call_args[1]["state_snapshot"]["minecraft.inventory"] == {"oak_log": 1}
         assert tool_context._start_time == 1000.0
 
     def test_should_log_tool_end_with_duration(self):
@@ -157,38 +176,47 @@ class TestToolInvocationCallbacks:
         # Arrange
         mock_logger = Mock()
 
+        # Create tool context mock
         tool_context = Mock()
         tool_context.agent_name = "CrafterAgent"
         tool_context._start_time = 1000.0
-        tool_context.state = {"minecraft.inventory": {"oak_planks": 4}}
 
-        tool_response = {"status": "success", "crafted": 4}
+        # Mock invocation context and agent
+        invocation_context = Mock()
+        agent = Mock()
+        agent._logger = mock_logger
+        invocation_context.agent = agent
+        tool_context._invocation_context = invocation_context
 
-        tool_mock = Mock()
-        tool_mock.name = "craft_item"
+        # Mock state
+        state = Mock()
+        state.get = Mock(side_effect=lambda key: {"oak_planks": 4} if key == "minecraft.inventory" else None)
+        tool_context.state = state
 
-        kwargs = {"tool": tool_mock}
+        # Mock tool
+        tool = Mock()
+        tool.name = "craft_item"
 
         # Act
-        with patch("src.agents.callbacks.logger", mock_logger):
-            with patch("time.perf_counter", return_value=1001.5):
-                result = log_tool_invocation_end_callback(tool_context, tool_response, **kwargs)
+        with patch("time.perf_counter", return_value=1001.5):
+            result = log_tool_invocation_end_callback(
+                tool_context, tool=tool, result={"status": "success", "crafted": 4}
+            )
 
         # Assert
         assert result is None
-        bound_logger = mock_logger.bind.return_value
-        assert bound_logger.debug.call_count == 2  # Complete + state after
+        assert mock_logger.debug.call_count == 2  # Complete + state after
 
         # Check completion log
-        complete_call = bound_logger.debug.call_args_list[0]
+        complete_call = mock_logger.debug.call_args_list[0]
         assert complete_call[0][0] == "tool_invocation_complete"
         assert complete_call[1]["duration_ms"] == 1500.0
         assert complete_call[1]["result"] == {"status": "success", "crafted": 4}
 
         # Check state log
-        state_call = bound_logger.debug.call_args_list[1]
+        state_call = mock_logger.debug.call_args_list[1]
         assert state_call[0][0] == "state_after_tool"
-        assert state_call[1]["current_state"] == {"minecraft.inventory": {"oak_planks": 4}}
+        assert state_call[1]["current_state"]["minecraft.inventory"] == {"oak_planks": 4}
 
 
 class TestConfiguredCallbacks:
