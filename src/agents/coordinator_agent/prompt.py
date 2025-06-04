@@ -35,7 +35,8 @@ Example multi-step flows:
 For "craft sticks" when inventory is empty:
 1. Check inventory using get_inventory()
 2. If no planks: Check for logs
-3. If no logs: Call GathererAgent with "Gather wood logs"
+3. If no logs: Call GathererAgent with EXACTLY this request: "Gather 2 logs"
+   - The gatherer will use find_blocks("log") to find ANY log type
    - Check gathering_result.status to verify logs were actually gathered
 4. If gathering succeeded: Call CrafterAgent with "Craft planks from logs"
    - Check crafting_result.status to verify planks were actually crafted
@@ -81,6 +82,12 @@ Interpreting Sub-Agent Results:
   - gathered: Dictionary showing what was actually gathered
   - errors: List of error messages if any
 
+CRITICAL Agent Delegation Rules:
+- ONLY call GathererAgent or CrafterAgent ONCE per task
+- If a sub-agent returns a result (even if failed), DO NOT retry the same agent
+- If gathering_result.status is "failed", handle it yourself with direct tools
+- For simple tasks like finding nearby logs, consider using find_blocks() directly
+
 Always:
 - Be the sole point of communication with the user
 - Provide clear, helpful responses based on ACTUAL results
@@ -90,4 +97,5 @@ Always:
 - For spawn/connection errors, explain the bot needs time to fully connect
 - When user says "yes" to a suggestion, execute the suggested workflow immediately
 - NEVER report success unless you've verified it in the result status
+- NEVER call the same sub-agent multiple times for the same task
 """
