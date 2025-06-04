@@ -25,16 +25,16 @@ class TestCoordinatorCraftFlow:
 
     @pytest.fixture
     def mock_coordinator(self, mock_session):
-        """Create a mock coordinator agent with sub-agents"""
+        """Create a mock coordinator agent with AgentTools"""
         from src.agents.coordinator_agent.agent import CoordinatorAgent
 
-        # Mock sub-agents
+        # Mock agent tools
         mock_crafter = MagicMock(name="CrafterAgent")
         mock_gatherer = MagicMock(name="GathererAgent")
 
         coordinator = CoordinatorAgent(
             name="TestCoordinator",
-            sub_agents=[mock_gatherer, mock_crafter],
+            tools=[mock_gatherer, mock_crafter],
             session_service=MagicMock(),
         )
 
@@ -53,10 +53,10 @@ class TestCoordinatorCraftFlow:
         # user_message = "craft 1 stick"  # Not used in this test
 
         # Expected behavior:
-        # 1. Coordinator should transfer to CrafterAgent
+        # 1. Coordinator should use CrafterAgent tool
         # 2. CrafterAgent reports missing planks
         # 3. Coordinator should create a plan to gather logs first
-        # 4. Coordinator should transfer to GathererAgent
+        # 4. Coordinator should use GathererAgent tool
 
         # Mock the coordinator's planning logic
         with patch.object(coordinator, "_create_material_gathering_plan") as mock_plan:

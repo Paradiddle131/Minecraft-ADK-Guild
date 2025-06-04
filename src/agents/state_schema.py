@@ -19,6 +19,7 @@ class StateKeys:
     MINECRAFT_NEARBY_BLOCKS: Final[str] = "minecraft.nearby_blocks"
     MINECRAFT_HEALTH: Final[str] = "minecraft.health"
     MINECRAFT_FOOD: Final[str] = "minecraft.food"
+    MINECRAFT_HAS_CRAFTING_TABLE: Final[str] = "minecraft.has_crafting_table"
 
     # Task management keys
     CURRENT_TASK: Final[str] = "current_task"
@@ -38,7 +39,7 @@ class StateKeys:
     CRAFT_PREREQUISITES: Final[str] = "task.craft.prerequisites"
 
     # Agent communication keys
-    AGENT_TRANSFER_REASON: Final[str] = "agent.transfer_reason"
+    AGENT_TOOL_REASON: Final[str] = "agent.tool_reason"
     AGENT_LAST_ACTION: Final[str] = "agent.last_action"
     AGENT_ERROR: Final[str] = "agent.error"
 
@@ -46,6 +47,9 @@ class StateKeys:
     COMMANDS_EXECUTED: Final[str] = "performance.commands_executed"
     SUCCESSFUL_ACTIONS: Final[str] = "performance.successful_actions"
     FAILED_ACTIONS: Final[str] = "performance.failed_actions"
+
+    # Temporary state keys (for in-progress operations)
+    MOVEMENT_IN_PROGRESS: Final[str] = "temp.movement_in_progress"
 
 
 # State value constants

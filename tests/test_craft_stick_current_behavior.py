@@ -40,7 +40,7 @@ async def test_current_craft_stick_behavior():
     for line in output_lines:
         if "AGENT STARTING: CoordinatorAgent" in line:
             events["coordinator_starts"] = True
-        elif "transfer_to_agent" in line and "CrafterAgent" in line:
+        elif ("CrafterAgent" in line and "Tool:" in line) or "AGENT STARTING: CrafterAgent" in line:
             events["transfers_to_crafter"] = True
         elif "AGENT STARTING: CrafterAgent" in line:
             events["crafter_starts"] = True
@@ -68,7 +68,7 @@ async def test_current_craft_stick_behavior():
     # Current behavior observations
     logger.info("\n=== OBSERVATIONS ===")
     logger.info("Current behavior:")
-    logger.info("- Coordinator correctly delegates to CrafterAgent")
+    logger.info("- Coordinator correctly uses CrafterAgent tool")
     logger.info("- CrafterAgent checks inventory and attempts to craft")
     logger.info("- CrafterAgent reports missing materials")
     logger.info("- Coordinator does NOT continue after receiving missing materials report")
@@ -76,11 +76,11 @@ async def test_current_craft_stick_behavior():
 
     logger.info("\n=== DESIRED BEHAVIOR ===")
     logger.info("What should happen:")
-    logger.info("1. Coordinator transfers to CrafterAgent")
+    logger.info("1. Coordinator uses CrafterAgent tool")
     logger.info("2. CrafterAgent reports missing materials (e.g., planks)")
-    logger.info("3. Coordinator recognizes this and transfers to GathererAgent")
+    logger.info("3. Coordinator recognizes this and uses GathererAgent tool")
     logger.info("4. GathererAgent gathers logs")
-    logger.info("5. Coordinator transfers back to CrafterAgent")
+    logger.info("5. Coordinator uses CrafterAgent tool again")
     logger.info("6. CrafterAgent crafts planks from logs")
     logger.info("7. CrafterAgent crafts sticks from planks")
     logger.info("8. Coordinator reports success to user")
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     # Assert current behavior
     assert events["coordinator_starts"], "Coordinator should start"
-    assert events["transfers_to_crafter"], "Should transfer to CrafterAgent"
+    assert events["transfers_to_crafter"], "Should use CrafterAgent tool"
     assert events["crafter_checks_inventory"], "Crafter should check inventory"
     assert events["crafter_attempts_craft"], "Crafter should attempt to craft"
     assert events["crafter_reports_missing"], "Crafter should report missing materials"

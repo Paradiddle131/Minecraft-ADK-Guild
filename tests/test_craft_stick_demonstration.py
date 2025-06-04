@@ -22,7 +22,7 @@ def demonstrate_desired_flow():
 
     # Step 2: Coordinator starts
     logger.info("COORDINATOR: I'll craft that stick for you.")
-    logger.info("COORDINATOR: [Transfers to CrafterAgent]")
+    logger.info("COORDINATOR: [Uses CrafterAgent tool]")
     logger.info("")
 
     # Step 3: CrafterAgent checks and attempts
@@ -35,7 +35,7 @@ def demonstrate_desired_flow():
     # Step 4: Coordinator recognizes missing materials
     logger.info("COORDINATOR: [Reads task.craft.result - sees missing planks]")
     logger.info("COORDINATOR: Need to gather materials first.")
-    logger.info("COORDINATOR: [Transfers to GathererAgent with 'gather logs']")
+    logger.info("COORDINATOR: [Uses GathererAgent tool with 'gather logs']")
     logger.info("")
 
     # Step 5: GathererAgent gathers
@@ -48,7 +48,7 @@ def demonstrate_desired_flow():
     # Step 6: Coordinator continues crafting
     logger.info("COORDINATOR: [Reads task.gather.result - sees logs gathered]")
     logger.info("COORDINATOR: Got logs, now crafting planks.")
-    logger.info("COORDINATOR: [Transfers to CrafterAgent with 'craft planks from logs']")
+    logger.info("COORDINATOR: [Uses CrafterAgent tool with 'craft planks from logs']")
     logger.info("")
 
     # Step 7: CrafterAgent crafts planks
@@ -61,7 +61,7 @@ def demonstrate_desired_flow():
     # Step 8: Coordinator continues with sticks
     logger.info("COORDINATOR: [Reads task.craft.result - sees planks crafted]")
     logger.info("COORDINATOR: Now crafting the sticks.")
-    logger.info("COORDINATOR: [Transfers to CrafterAgent with 'craft sticks']")
+    logger.info("COORDINATOR: [Uses CrafterAgent tool with 'craft sticks']")
     logger.info("")
 
     # Step 9: CrafterAgent crafts sticks
@@ -78,9 +78,9 @@ def demonstrate_desired_flow():
 
     logger.info("=== KEY POINTS ===")
     logger.info("1. Coordinator maintains control throughout the process")
-    logger.info("2. Sub-agents update state with their results")
+    logger.info("2. Agent tools update state with their results")
     logger.info("3. Coordinator reads state and makes decisions")
-    logger.info("4. Multiple transfers happen to complete the task")
+    logger.info("4. Multiple tool calls happen to complete the task")
     logger.info("5. User gets clear progress updates")
 
 

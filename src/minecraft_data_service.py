@@ -193,35 +193,21 @@ class MinecraftDataService:
             Food points value or 0 if not a food item
         """
         try:
+            # Handle special case: "steak" is called "cooked_beef" in minecraft
+            if item_name == "steak":
+                item_name = "cooked_beef"
+
             # Check if item is in foods_name
             food_data = self.mc_data.foods_name.get(item_name)
             if food_data:
                 return food_data.get("foodPoints", 0)
 
-            # Fallback to hardcoded values for common foods
-            food_values = {
-                "apple": 4,
-                "bread": 5,
-                "cooked_beef": 8,
-                "cooked_chicken": 6,
-                "cooked_porkchop": 8,
-                "golden_apple": 4,
-                "cookie": 2,
-                "cake": 14,
-                "cooked_mutton": 6,
-                "cooked_rabbit": 5,
-                "cooked_salmon": 6,
-                "cooked_cod": 5,
-                "baked_potato": 5,
-                "carrot": 3,
-                "potato": 1,
-                "melon_slice": 2,
-                "pumpkin_pie": 8,
-                "steak": 8,
-                "sweet_berries": 2,
-                "glow_berries": 2,
-            }
-            return food_values.get(item_name, 0)
+            # Special case: cake must be placed as a block to be eaten (7 slices × 2 points each)
+            if item_name == "cake":
+                logger.info("Cake must be placed as a block to be eaten (provides 14 total food points)")
+                return 14  # Total food points from all 7 slices
+
+            return 0
         except Exception as e:
             logger.error(f"Error getting food points for '{item_name}': {e}")
             return 0
@@ -236,35 +222,20 @@ class MinecraftDataService:
             Saturation value or 0.0 if not a food item
         """
         try:
+            # Handle special case: "steak" is called "cooked_beef" in minecraft
+            if item_name == "steak":
+                item_name = "cooked_beef"
+
             # Check if item is in foods_name
             food_data = self.mc_data.foods_name.get(item_name)
             if food_data:
                 return food_data.get("saturation", 0.0)
 
-            # Fallback to hardcoded values
-            saturation_values = {
-                "apple": 2.4,
-                "bread": 6.0,
-                "cooked_beef": 12.8,
-                "cooked_chicken": 7.2,
-                "cooked_porkchop": 12.8,
-                "golden_apple": 9.6,
-                "cookie": 0.4,
-                "cake": 0.4,
-                "cooked_mutton": 9.6,
-                "cooked_rabbit": 6.0,
-                "cooked_salmon": 9.6,
-                "cooked_cod": 6.0,
-                "baked_potato": 6.0,
-                "carrot": 3.6,
-                "potato": 0.6,
-                "melon_slice": 1.2,
-                "pumpkin_pie": 4.8,
-                "steak": 12.8,
-                "sweet_berries": 0.4,
-                "glow_berries": 0.4,
-            }
-            return saturation_values.get(item_name, 0.0)
+            # Special case: cake must be placed as a block to be eaten
+            if item_name == "cake":
+                return 0.4  # Saturation per slice (2.8 total for all slices)
+
+            return 0.0
         except Exception as e:
             logger.error(f"Error getting saturation for '{item_name}': {e}")
             return 0.0

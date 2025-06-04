@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from google.adk.tools import ToolContext
 
+from ..agents.state_schema import StateKeys
 from ..logging_config import get_logger
 from ..minecraft_bot_controller import BotController
 from ..minecraft_data_service import MinecraftDataService
@@ -70,7 +71,7 @@ async def move_to(
 
         # Store movement start in state
         if tool_context and hasattr(tool_context, "state"):
-            tool_context.state["temp:movement_in_progress"] = {
+            tool_context.state[StateKeys.MOVEMENT_IN_PROGRESS] = {
                 "target": {"x": x, "y": y, "z": z},
                 "start_position": current_pos,
                 "start_time": __import__("time").time(),
@@ -88,13 +89,13 @@ async def move_to(
 
             # Update position in state
             if tool_context and hasattr(tool_context, "state"):
-                tool_context.state["minecraft_position"] = {
+                tool_context.state[StateKeys.MINECRAFT_POSITION] = {
                     "x": actual_pos["x"],
                     "y": actual_pos["y"],
                     "z": actual_pos["z"],
                     "timestamp": __import__("time").time(),
                 }
-                tool_context.state["temp:movement_in_progress"] = None
+                tool_context.state[StateKeys.MOVEMENT_IN_PROGRESS] = None
 
             return {
                 "status": "success",
@@ -356,7 +357,7 @@ async def get_movement_status(tool_context: Optional[ToolContext] = None) -> Dic
 
         # Check session state for movement tracking
         if tool_context and hasattr(tool_context, "state"):
-            movement_progress = tool_context.state.get("temp:movement_in_progress")
+            movement_progress = tool_context.state.get(StateKeys.MOVEMENT_IN_PROGRESS)
             if movement_progress:
                 # Calculate if we're still moving based on session state
                 current_time = __import__("time").time()
@@ -671,7 +672,7 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
 
         # Save structured inventory data to session state if tool_context is provided
         if tool_context and hasattr(tool_context, "state"):
-            tool_context.state["minecraft_inventory"] = {
+            tool_context.state[StateKeys.MINECRAFT_INVENTORY] = {
                 "items": enriched_items,
                 "summary": inventory_summary,
                 "statistics": result["statistics"],
@@ -688,7 +689,10 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
 
         # Save error state if tool_context is provided
         if tool_context and hasattr(tool_context, "state"):
-            tool_context.state["minecraft_inventory"] = {"error": str(e), "timestamp": __import__("time").time()}
+            tool_context.state[StateKeys.MINECRAFT_INVENTORY] = {
+                "error": str(e),
+                "timestamp": __import__("time").time(),
+            }
 
         return error_result
 

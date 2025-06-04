@@ -98,8 +98,8 @@ digraph InteractiveAgentLoop {
 
     // ADK Processing
     runner -> coordinator [label="Execute"];
-    coordinator -> gatherer [label="transfer_to_agent", style=dashed];
-    coordinator -> crafter [label="transfer_to_agent", style=dashed];
+    coordinator -> gatherer [label="AgentTool call", style=dashed];
+    coordinator -> crafter [label="AgentTool call", style=dashed];
 
     gatherer -> bot_controller [label="Use tools"];
     crafter -> bot_controller [label="Use tools"];
