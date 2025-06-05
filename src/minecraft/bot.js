@@ -736,8 +736,41 @@ class MinecraftBot {
 
                 const faceVector = this.getFaceVector(face);
 
-                await this.bot.placeBlock(referenceBlock, faceVector);
-                return { placed: true };
+                // Calculate where the block will be placed
+                const placedPosition = {
+                    x: x + faceVector.x,
+                    y: y + faceVector.y,
+                    z: z + faceVector.z
+                };
+
+                try {
+                    // Try to place the block - Mineflayer might timeout waiting for blockUpdate
+                    await this.bot.placeBlock(referenceBlock, faceVector);
+                } catch (error) {
+                    // Check if it's the blockUpdate timeout error
+                    if (error.message && error.message.includes('Event blockUpdate') && error.message.includes('did not fire within timeout')) {
+                        // Check if block was actually placed despite the timeout
+                        const placedBlock = this.bot.blockAt(new Vec3(placedPosition.x, placedPosition.y, placedPosition.z));
+
+                        if (placedBlock && placedBlock.name !== 'air') {
+                            // Block was successfully placed, ignore the timeout error
+                            logger.info(`Block placed successfully at (${placedPosition.x}, ${placedPosition.y}, ${placedPosition.z}) despite blockUpdate timeout`);
+                        } else {
+                            // Block was not placed, re-throw the error
+                            throw error;
+                        }
+                    } else {
+                        // Different error, re-throw it
+                        throw error;
+                    }
+                }
+
+                return {
+                    placed: true,
+                    reference_position: { x, y, z },
+                    placed_position: placedPosition,
+                    face: face
+                };
             },
 
             // Inventory
