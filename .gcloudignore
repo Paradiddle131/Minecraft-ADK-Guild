@@ -1,0 +1,52 @@
+# This file specifies files that are *not* uploaded to Google Cloud Platform
+# using gcloud. It follows the same syntax as .gitignore, with the addition of
+# "#!include" directives (which insert the entries of the given .gitignore-style
+# file at that point).
+
+.gcloudignore
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+*.egg-info/
+.pytest_cache/
+
+# Documentation
+ai_docs/
+ai_plans/
+ai_artifacts/
+docs/
+*.md
+
+# Testing
+tests/
+test_*.py
+
+# IDE
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Session data
+minecraft_coordinator/
+minecraft_crafter/
+minecraft_gatherer/
+
+# Node modules (will be installed during build)
+node_modules/

@@ -1,0 +1,6 @@
+# GCP deployment dependencies
+google-cloud-compute>=1.14.0
+google-cloud-resource-manager>=1.10.0
+google-cloud-secret-manager>=2.16.0
+google-cloud-monitoring>=2.15.0
+google-cloud-aiplatform[adk,agent_engines]>=1.43.0

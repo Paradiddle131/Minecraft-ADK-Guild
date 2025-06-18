@@ -50,3 +50,7 @@ ai_artifacts/
 
 # Claude Code
 .claude/
+
+# GCP deployment (local overrides)
+deploy/config_local.py
+.gcp_credentials/

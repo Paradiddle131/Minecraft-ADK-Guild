@@ -133,3 +133,40 @@ Example log output:
   "duration_seconds": 45.3
 }
 ```
+
+## ☁️ GCP Deployment
+
+This project includes scripts for deploying to Google Cloud Platform:
+
+### Quick Deployment
+
+```bash
+# Validate setup
+python deploy/validate_setup.py
+
+# Install deployment dependencies
+pip install -e ".[deploy]"
+
+# Run deployment (in order)
+python deploy/setup_project.py      # Enable APIs, create resources
+python deploy/deploy_minecraft.py   # Deploy Minecraft server
+python deploy/setup_secrets.py      # Configure secrets
+python deploy/deploy_agent.py       # Deploy bot to Agent Engine
+python deploy/setup_monitoring.py   # Add basic monitoring
+```
+
+### What Gets Deployed
+
+- **Minecraft Server**: Compute Engine instance with static IP
+- **Bot System**: Agent Engine for scalable agent hosting  
+- **Monitoring**: Basic uptime checks and logging
+- **CI/CD**: Cloud Build for automated deployments
+
+See [deploy/README.md](deploy/README.md) for detailed deployment instructions.
+
+### Estimated Costs
+
+- ~$40-50/month for MVP deployment
+- Minecraft server: ~$30/month (e2-medium)
+- Static IP: ~$7/month
+- Agent Engine: Pay-per-use (minimal for testing)

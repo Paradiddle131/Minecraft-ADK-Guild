@@ -60,6 +60,20 @@ def get_config() -> AgentConfig:
     return AgentConfig()
 
 
+def _get_secret_from_secret_manager(secret_id: str, project_id: str) -> Optional[str]:
+    """Retrieve secret from Google Secret Manager if available"""
+    try:
+        from google.cloud import secretmanager
+
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception:
+        # Secret Manager not available or secret not found
+        return None
+
+
 def setup_google_ai_credentials(config: AgentConfig) -> dict:
     """Setup Google AI credentials based on configuration
 
@@ -78,6 +92,12 @@ def setup_google_ai_credentials(config: AgentConfig) -> dict:
         credentials["location"] = config.google_cloud_location
         os.environ["GOOGLE_CLOUD_PROJECT"] = config.google_cloud_project
         os.environ["GOOGLE_CLOUD_LOCATION"] = config.google_cloud_location
+
+        # Try to get API key from Secret Manager if on GCP
+        if not os.getenv("GOOGLE_API_KEY"):
+            secret_key = _get_secret_from_secret_manager("google-ai-api-key", config.google_cloud_project)
+            if secret_key:
+                os.environ["GOOGLE_API_KEY"] = secret_key
     else:
         # Try to get from environment
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
