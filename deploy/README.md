@@ -1,6 +1,6 @@
 # GCP Deployment Guide
 
-This directory contains scripts to deploy the Minecraft ADK Guild bot system to Google Cloud Platform.
+This directory contains scripts to deploy the Minecraft ADK Guild bot system to Google Cloud Platform using the latest 2024 Google Cloud Python SDK libraries.
 
 ## Prerequisites
 
@@ -14,6 +14,9 @@ This directory contains scripts to deploy the Minecraft ADK Guild bot system to 
 
 1. **Install deployment dependencies:**
    ```bash
+   # Install latest GCP SDK libraries (2024)
+   pip install -e ".[deploy]"
+   # OR alternatively:
    pip install -r deploy/requirements.txt
    ```
 

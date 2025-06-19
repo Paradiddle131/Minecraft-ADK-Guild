@@ -5,7 +5,7 @@ from pathlib import Path
 from google.api_core import exceptions
 from google.cloud import secretmanager
 
-from config import API_KEY_SECRET_NAME, PROJECT_ID
+from .config import API_KEY_SECRET_NAME, PROJECT_ID
 
 
 def create_secret(project_id: str, secret_id: str) -> None:

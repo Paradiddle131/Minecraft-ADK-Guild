@@ -3,9 +3,9 @@
 from typing import List
 
 from google.api_core import exceptions
-from google.cloud import compute_v1, resourcemanager_v3
+from google.cloud import compute_v1, service_usage_v1
 
-from config import (
+from .config import (
     FIREWALL_RULE_NAME,
     MINECRAFT_PORT,
     PROJECT_ID,
@@ -20,10 +20,10 @@ class GCPSetup:
         self.project_id = project_id
         self.compute_client = compute_v1.FirewallsClient()
         self.addresses_client = compute_v1.GlobalAddressesClient()
-        self.services_client = resourcemanager_v3.ServicesClient()
+        self.service_usage_client = service_usage_v1.ServiceUsageClient()
 
     def enable_apis(self, apis: List[str]) -> None:
-        """Enable required GCP APIs"""
+        """Enable required GCP APIs using Service Usage API"""
         print("Enabling required APIs...")
 
         for api in apis:
@@ -31,8 +31,9 @@ class GCPSetup:
 
             try:
                 # Check if already enabled
-                service = self.services_client.get_service(name=service_name)
-                if service.state == resourcemanager_v3.Service.State.ENABLED:
+                request = service_usage_v1.GetServiceRequest(name=service_name)
+                service = self.service_usage_client.get_service(request=request)
+                if service.state == service_usage_v1.State.ENABLED:
                     print(f"✓ {api} already enabled")
                     continue
             except exceptions.NotFound:
@@ -40,7 +41,8 @@ class GCPSetup:
 
             try:
                 # Enable the service
-                self.services_client.enable_service(name=service_name)
+                request = service_usage_v1.EnableServiceRequest(name=service_name)
+                self.service_usage_client.enable_service(request=request)
                 print(f"  Enabling {api}...")
                 # Note: In production, you'd want to wait for the operation to complete
                 print(f"✓ {api} enablement initiated")

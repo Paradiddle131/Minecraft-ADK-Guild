@@ -11,7 +11,9 @@ import vertexai
 from google.cloud import compute_v1, secretmanager
 from vertexai import agent_engines
 
-from config import (
+from src.agents.coordinator_agent.agent import create_coordinator_agent
+
+from .config import (
     AGENT_ENGINE_NAME,
     API_KEY_SECRET_NAME,
     INSTANCE_NAME,
@@ -21,7 +23,6 @@ from config import (
     STAGING_BUCKET,
     ZONE,
 )
-from src.agents.coordinator_agent.agent import create_coordinator_agent
 
 
 def get_minecraft_server_ip() -> str:

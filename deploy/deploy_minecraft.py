@@ -6,7 +6,7 @@ from pathlib import Path
 from google.api_core import exceptions
 from google.cloud import compute_v1
 
-from config import (
+from .config import (
     INSTANCE_NAME,
     MACHINE_TYPE,
     PROJECT_ID,

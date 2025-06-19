@@ -3,7 +3,7 @@
 from google.api_core import exceptions
 from google.cloud import monitoring_v3
 
-from config import MINECRAFT_PORT, PROJECT_ID, STATIC_IP_NAME
+from .config import MINECRAFT_PORT, PROJECT_ID, STATIC_IP_NAME
 
 
 def create_uptime_check(project_id: str) -> None:
