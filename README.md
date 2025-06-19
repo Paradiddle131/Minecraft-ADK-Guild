@@ -142,17 +142,17 @@ This project includes scripts for deploying to Google Cloud Platform:
 
 ```bash
 # Validate setup
-python deploy/validate_setup.py
+python -m deploy.validate_setup
 
 # Install deployment dependencies
 pip install -e ".[deploy]"
 
 # Run deployment (in order)
-python deploy/setup_project.py      # Enable APIs, create resources
-python deploy/deploy_minecraft.py   # Deploy Minecraft server
-python deploy/setup_secrets.py      # Configure secrets
-python deploy/deploy_agent.py       # Deploy bot to Agent Engine
-python deploy/setup_monitoring.py   # Add basic monitoring
+python -m deploy.setup_project      # Enable APIs, create resources
+python -m deploy.deploy_minecraft   # Deploy Minecraft server
+python -m deploy.setup_secrets      # Configure secrets
+python -m deploy.deploy_agent       # Deploy bot to Agent Engine
+python -m deploy.setup_monitoring   # Add basic monitoring
 ```
 
 ### What Gets Deployed

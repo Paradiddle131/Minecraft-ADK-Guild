@@ -33,20 +33,22 @@ This directory contains scripts to deploy the Minecraft ADK Guild bot system to 
 3. **Run deployment scripts in order:**
    ```bash
    # Enable APIs and create basic resources
-   python deploy/setup_project.py
+   python -m deploy.setup_project
    
    # Deploy Minecraft server
-   python deploy/deploy_minecraft.py
+   python -m deploy.deploy_minecraft
    
    # Set up secrets
-   python deploy/setup_secrets.py
+   python -m deploy.setup_secrets
    
    # Deploy bot to Agent Engine
-   python deploy/deploy_agent.py
+   python -m deploy.deploy_agent
    
    # Set up monitoring
-   python deploy/setup_monitoring.py
+   python -m deploy.setup_monitoring
    ```
+
+   > **Note**: Scripts must be run as Python modules (using `-m`) to support proper relative imports and IDE navigation. Running them directly (e.g., `python deploy/setup_project.py`) will result in import errors.
 
 ## What Gets Deployed
 
@@ -92,6 +94,21 @@ Estimated monthly costs for this MVP:
 - Static IP: ~$7
 - Agent Engine: Pay-per-use (minimal for testing)
 - Total: ~$40-50/month
+
+## Troubleshooting
+
+### Import Errors
+If you encounter `ImportError: attempted relative import with no known parent package`:
+- Make sure you're running scripts as modules: `python -m deploy.script_name`
+- Ensure you're in the project root directory when running commands
+- Do not run scripts directly (e.g., `python deploy/setup_project.py`)
+
+### Authentication Issues
+```bash
+# Re-authenticate if needed
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
+```
 
 ## Cleanup
 
