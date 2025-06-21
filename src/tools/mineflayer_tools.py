@@ -590,11 +590,11 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
             and not _bot_controller.bridge_manager_instance.is_connected
         ):
             return {
-                "status": "info",
-                "message": "Bot is not connected to Minecraft server.",
+                "status": "error",
+                "error": "Not connected to server",
+                "message": "I am not currently connected to a Minecraft server. I am running in a simulated environment. If you connect me to a Minecraft server, I can check the inventory.",
                 "items": [],
                 "summary": {},
-                "help": "You're using the ADK Web UI without a Minecraft connection. To interact with a real Minecraft server, please use 'python main.py --interactive' instead.",
             }
 
         # Add a small delay to ensure inventory is synchronized after crafting

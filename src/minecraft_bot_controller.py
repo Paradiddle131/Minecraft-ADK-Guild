@@ -42,8 +42,8 @@ class BotController:
         if not self.bridge_manager_instance.is_connected:
             return {
                 "status": "error",
-                "error": "Bot is not connected to Minecraft server",
-                "message": "The bot is running in web UI mode without a Minecraft connection. To interact with Minecraft, please use 'python main.py --interactive' instead.",
+                "error": "Not connected to server",
+                "message": "I am not currently connected to a Minecraft server. I am running in a simulated environment. If you connect me to a Minecraft server, I can check the inventory.",
             }
         return None
 
@@ -281,40 +281,38 @@ class BotController:
             logger.error(f"Get inventory failed: {e}")
             return []
 
-    async def get_position(self) -> Dict[str, float]:
+    async def get_position(self) -> Dict[str, Any]:
         """Get current bot position
 
         Returns:
-            Dict with x, y, z coordinates
+            Dict with x, y, z coordinates or error
         """
-        # Check connection but return default position for compatibility
-        if not self.bridge_manager_instance.is_connected:
-            logger.info("Get position called in web UI mode - returning default position")
-            return {"x": 0, "y": 0, "z": 0}
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
 
         try:
             return await self.bridge_manager_instance.get_position()
         except Exception as e:
             logger.error(f"Get position failed: {e}")
-            return {"x": 0, "y": 0, "z": 0}
+            return {"status": "error", "error": str(e)}
 
-    async def get_health(self) -> Dict[str, float]:
+    async def get_health(self) -> Dict[str, Any]:
         """Get bot health, food, and saturation
 
         Returns:
-            Dict with health stats
+            Dict with health stats or error
         """
-        # Check connection but return default health for compatibility
-        if not self.bridge_manager_instance.is_connected:
-            logger.info("Get health called in web UI mode - returning default health")
-            return {"health": 20, "food": 20, "saturation": 5}
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
 
         try:
             result = await self.bridge_manager_instance.execute_command("entity.health")
             return result
         except Exception as e:
             logger.error(f"Get health failed: {e}")
-            return {"health": 0, "food": 0, "saturation": 0}
+            return {"status": "error", "error": str(e)}
 
     async def find_blocks(
         self, block_identifiers: Union[int, str, List[Union[int, str]]], max_distance: int = 64, count: int = 1
@@ -329,6 +327,11 @@ class BotController:
         Returns:
             List of block positions
         """
+        # Check connection but return empty list since this method returns a list
+        if not self.bridge_manager_instance.is_connected:
+            logger.info("Find blocks called in web UI mode - returning empty list")
+            return []
+
         try:
             result = await self.bridge_manager_instance.execute_command(
                 "world.findBlocks", matching=block_identifiers, maxDistance=max_distance, count=count
@@ -372,12 +375,16 @@ class BotController:
         Returns:
             Dict with block information
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             result = await self.bridge_manager_instance.execute_command("world.getBlock", x=x, y=y, z=z)
             return result
         except Exception as e:
             logger.error(f"Get block failed: {e}")
-            return {"name": "unknown", "type": -1}
+            return {"status": "error", "error": str(e)}
 
     async def activate_item(self) -> Dict[str, Any]:
         """Activate/use the currently held item
@@ -385,6 +392,10 @@ class BotController:
         Returns:
             Dict with activation result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             await self.bridge_manager_instance.execute_command("js_activateItem")
             return {"status": "success", "activated": True}
@@ -398,6 +409,10 @@ class BotController:
         Returns:
             Dict with deactivation result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             await self.bridge_manager_instance.execute_command("js_deactivateItem")
             return {"status": "success", "deactivated": True}
@@ -416,6 +431,10 @@ class BotController:
         Returns:
             Dict with use result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             await self.bridge_manager_instance.execute_command("js_useOnBlock", x=x, y=y, z=z)
             return {"status": "success", "used_on": {"x": x, "y": y, "z": z}}
@@ -432,6 +451,10 @@ class BotController:
         Returns:
             Dict with attack result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             await self.bridge_manager_instance.execute_command("js_attackEntity", entity_id=entity_id)
             return {"status": "success", "attacked": entity_id}
@@ -449,6 +472,10 @@ class BotController:
         Returns:
             Dict with drop result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             await self.bridge_manager_instance.execute_command("js_dropItem", item_name=item_name, count=count)
             return {"status": "success", "dropped": item_name, "count": count}
@@ -467,6 +494,10 @@ class BotController:
         Returns:
             Dict with toss result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             result = await self.bridge_manager_instance.execute_command(
                 "toss", itemType=item_type, count=count, metadata=metadata
@@ -515,6 +546,10 @@ class BotController:
         Returns:
             Dict with toss result
         """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
         try:
             result = await self.bridge_manager_instance.execute_command("tossStack", slotIndex=slot_index)
 
