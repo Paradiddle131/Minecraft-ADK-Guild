@@ -1,0 +1,375 @@
+<svg viewBox="0 0 1400 950" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f0f4f8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e1e8ed;stop-opacity:1" />
+    </linearGradient>
+
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="2" dy="2" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.2"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#4a5568" />
+    </marker>
+
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#38a169" />
+    </marker>
+  </defs>
+
+  <rect width="1400" height="1000" fill="url(#bgGradient)"/>
+
+  <!-- Title -->
+  <text x="700" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#1a202c">
+    Multi-Agent Coordination Flow with ADK
+  </text>
+  <text x="700" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#4a5568">
+    Demonstrating Autonomous Agent Collaboration in Minecraft
+  </text>
+
+  <!-- Flow Sections -->
+
+  <!-- 1. User Input Section -->
+  <g id="user-input">
+    <rect x="50" y="120" width="300" height="180" rx="15" fill="#e6fffa" stroke="#319795" stroke-width="2" filter="url(#shadow)"/>
+    <text x="200" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#234e52">
+      1. User Input
+    </text>
+
+    <rect x="70" y="170" width="260" height="40" rx="20" fill="#81e6d9"/>
+    <text x="200" y="195" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#234e52">
+      "craft a wooden pickaxe"
+    </text>
+
+    <text x="200" y="235" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#4a5568">
+      Natural language command
+    </text>
+    <text x="200" y="255" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#4a5568">
+      via CLI or Interactive Mode
+    </text>
+
+    <circle cx="100" cy="280" r="5" fill="#38b2ac"/>
+    <text x="115" y="285" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">Command parsing</text>
+  </g>
+
+  <!-- 2. ADK Coordinator Section -->
+  <g id="coordinator-section">
+    <rect x="420" y="120" width="560" height="350" rx="15" fill="#fff5f5" stroke="#fc8181" stroke-width="3" filter="url(#shadow)"/>
+    <text x="700" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#742a2a">
+      2. ADK CoordinatorAgent
+    </text>
+
+    <!-- Task Analysis -->
+    <rect x="440" y="170" width="240" height="120" rx="10" fill="#fed7d7"/>
+    <text x="560" y="195" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#742a2a">
+      Task Analysis
+    </text>
+    <text x="560" y="215" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Parse user intent
+    </text>
+    <text x="560" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Identify sub-tasks:
+    </text>
+    <text x="560" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      1. Gather wood (3x)
+    </text>
+    <text x="560" y="260" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      2. Craft planks
+    </text>
+    <text x="560" y="275" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      3. Craft sticks
+    </text>
+    <text x="560" y="290" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      4. Craft pickaxe
+    </text>
+
+    <!-- Agent Selection -->
+    <rect x="720" y="170" width="240" height="120" rx="10" fill="#fed7d7"/>
+    <text x="840" y="195" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#742a2a">
+      Agent Selection
+    </text>
+    <text x="840" y="215" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Tasks 1 → GathererAgent
+    </text>
+    <text x="840" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Tasks 2-4 → CrafterAgent
+    </text>
+    <text x="840" y="245" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Assign priorities
+    </text>
+    <text x="840" y="260" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Set dependencies
+    </text>
+    <text x="840" y="275" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Monitor progress
+    </text>
+
+    <!-- Session State -->
+    <rect x="440" y="310" width="520" height="140" rx="10" fill="#fef3c7"/>
+    <text x="700" y="335" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#78350f">
+      Persistent Session State
+    </text>
+
+    <rect x="460" y="350" width="230" height="80" rx="5" fill="#fde68a"/>
+    <text x="575" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#78350f">
+      Command Queue
+    </text>
+    <text x="575" y="388" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • gather_wood(3)
+    </text>
+    <text x="575" y="402" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • craft_planks()
+    </text>
+    <text x="575" y="416" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • craft_sticks()
+    </text>
+    <text x="575" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • craft_pickaxe()
+    </text>
+
+    <rect x="710" y="350" width="230" height="80" rx="5" fill="#fde68a"/>
+    <text x="825" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#78350f">
+      Execution Context
+    </text>
+    <text x="825" y="388" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Current position
+    </text>
+    <text x="825" y="402" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Inventory state
+    </text>
+    <text x="825" y="416" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Agent results
+    </text>
+  </g>
+
+  <!-- 3. Sub-Agent Execution -->
+  <g id="sub-agents">
+    <!-- GathererAgent -->
+    <rect x="50" y="520" width="400" height="200" rx="15" fill="#e6f3ff" stroke="#4299e1" stroke-width="2" filter="url(#shadow)"/>
+    <text x="250" y="550" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#2b6cb0">
+      3a. GathererAgent Execution
+    </text>
+
+    <rect x="70" y="570" width="180" height="130" rx="5" fill="#bee3f8"/>
+    <text x="160" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#2b6cb0">
+      Planning Phase
+    </text>
+    <text x="160" y="608" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Find nearest trees
+    </text>
+    <text x="160" y="622" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Calculate path
+    </text>
+    <text x="160" y="636" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Check for axe
+    </text>
+    <text x="160" y="650" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Plan gathering
+    </text>
+
+    <rect x="260" y="570" width="170" height="130" rx="5" fill="#90cdf4"/>
+    <text x="345" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#2b6cb0">
+      Execution Phase
+    </text>
+    <text x="345" y="608" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Navigate to tree
+    </text>
+    <text x="345" y="622" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Equip axe
+    </text>
+    <text x="345" y="636" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Break blocks (3x)
+    </text>
+    <text x="345" y="650" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Collect items
+    </text>
+    <text x="345" y="664" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Update inventory
+    </text>
+    <text x="345" y="678" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#059669">
+      ✓ Task Complete
+    </text>
+  </g>
+
+  <!-- CrafterAgent -->
+  <g id="crafter-agent">
+    <rect x="500" y="520" width="400" height="200" rx="15" fill="#f3e8ff" stroke="#9f7aea" stroke-width="2" filter="url(#shadow)"/>
+    <text x="700" y="550" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#553c9a">
+      3b. CrafterAgent Execution
+    </text>
+
+    <rect x="520" y="570" width="180" height="130" rx="5" fill="#d6bcfa"/>
+    <text x="610" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#553c9a">
+      Verification Phase
+    </text>
+    <text x="610" y="608" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Check inventory
+    </text>
+    <text x="610" y="622" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Verify wood (3)
+    </text>
+    <text x="610" y="636" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Recipe validation
+    </text>
+    <text x="610" y="650" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Dependency check
+    </text>
+
+    <rect x="710" y="570" width="170" height="130" rx="5" fill="#b794f4"/>
+    <text x="795" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#553c9a">
+      Crafting Phase
+    </text>
+    <text x="795" y="608" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Craft planks (4x)
+    </text>
+    <text x="795" y="622" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Craft sticks (2x)
+    </text>
+    <text x="795" y="636" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Open crafting table
+    </text>
+    <text x="795" y="650" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Place materials
+    </text>
+    <text x="795" y="664" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4a5568">
+      • Craft wooden pickaxe
+    </text>
+    <text x="795" y="678" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#059669">
+      ✓ Task Complete
+    </text>
+  </g>
+
+  <!-- 4. Result Aggregation -->
+  <g id="results">
+    <rect x="950" y="520" width="400" height="200" rx="15" fill="#e6fffa" stroke="#38b2ac" stroke-width="2" filter="url(#shadow)"/>
+    <text x="1150" y="550" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#234e52">
+      4. Result Aggregation
+    </text>
+
+    <rect x="970" y="570" width="360" height="130" rx="5" fill="#81e6d9"/>
+    <text x="1150" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#234e52">
+      Coordinator Synthesis
+    </text>
+    <text x="1150" y="610" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • GathererAgent: ✓ 3 wood blocks collected
+    </text>
+    <text x="1150" y="625" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • CrafterAgent: ✓ 1 wooden pickaxe crafted
+    </text>
+    <text x="1150" y="640" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Time taken: 52 seconds
+    </text>
+    <text x="1150" y="655" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#4a5568">
+      • Materials used: 3 wood → 4 planks → 2 sticks
+    </text>
+    <text x="1150" y="675" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#059669">
+      Final Response: "Successfully crafted a
+    </text>
+    <text x="1150" y="690" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#059669">
+      wooden pickaxe! Ready for mining."
+    </text>
+  </g>
+
+  <!-- Real Minecraft Server Integration -->
+  <g id="minecraft-server-integration">
+    <rect x="50" y="760" width="1300" height="160" rx="15" fill="#efebe9" stroke="#795548" stroke-width="3" filter="url(#shadow)"/>
+    <text x="700" y="790" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#3e2723">
+      Real Minecraft Server Integration
+    </text>
+
+    <!-- Bridge Process -->
+    <rect x="80" y="820" width="300" height="80" rx="5" fill="#d7ccc8"/>
+    <text x="230" y="840" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#3e2723">
+      Python → JS Bridge
+    </text>
+    <text x="230" y="860" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#5d4037">
+      • WebSocket commands (port 8765)
+    </text>
+    <text x="230" y="875" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#5d4037">
+      • Tool calls → Mineflayer functions
+    </text>
+
+    <!-- Mineflayer Bot -->
+    <rect x="410" y="820" width="300" height="80" rx="5" fill="#bcaaa4"/>
+    <text x="560" y="840" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#3e2723">
+      Mineflayer Bot Actions
+    </text>
+    <text x="560" y="860" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#5d4037">
+      • bot.dig() for block breaking
+    </text>
+    <text x="560" y="875" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#5d4037">
+      • bot.craft() for item creation
+    </text>
+
+    <!-- Server Execution -->
+    <rect x="740" y="820" width="300" height="80" rx="5" fill="#a1887f"/>
+    <text x="890" y="840" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#ffffff">
+      Minecraft Server (localhost:25565)
+    </text>
+    <text x="890" y="860" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">
+      • Real game world modifications
+    </text>
+    <text x="890" y="875" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">
+      • Live inventory &amp; block updates
+    </text>
+
+    <!-- Visual Feedback -->
+    <rect x="1070" y="820" width="250" height="80" rx="5" fill="#8d6e63"/>
+    <text x="1195" y="840" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#ffffff">
+      Visual Feedback
+    </text>
+    <text x="1195" y="860" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">
+      • See bot mining wood
+    </text>
+    <text x="1195" y="875" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">
+      • Watch crafting happen
+    </text>
+  </g>
+
+  <!-- Flow Arrows -->
+  <!-- User to Coordinator -->
+  <path d="M 350 210 Q 385 210 385 250 Q 385 290 420 290" stroke="#4a5568" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Coordinator to Gatherer -->
+  <path d="M 560 470 Q 560 495 250 495 Q 250 520 250 520" stroke="#4299e1" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Coordinator to Crafter -->
+  <path d="M 840 470 Q 840 495 700 495 Q 700 520 700 520" stroke="#9f7aea" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Gatherer to Results -->
+  <path d="M 450 620 Q 700 620 950 620" stroke="#38a169" stroke-width="3" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- Crafter to Results -->
+  <path d="M 900 620 Q 925 620 950 620" stroke="#38a169" stroke-width="3" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- Results back to User -->
+  <path d="M 1150 520 Q 1150 400 1150 300 Q 1150 210 350 210" stroke="#38a169" stroke-width="3" stroke-dasharray="5,5" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- Key Highlights -->
+  <g id="highlights">
+    <circle cx="700" y="290" r="30" fill="#fbbf24" fill-opacity="0.3" stroke="#f59e0b" stroke-width="2"/>
+    <text x="700" y="295" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#78350f">
+      ADK
+    </text>
+
+    <circle cx="250" y="620" r="30" fill="#34d399" fill-opacity="0.3" stroke="#10b981" stroke-width="2"/>
+    <text x="250" y="625" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#065f46">
+      Auto
+    </text>
+
+    <circle cx="700" y="620" r="30" fill="#a78bfa" fill-opacity="0.3" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="700" y="625" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#4c1d95">
+      Multi
+    </text>
+  </g>
+</svg>
