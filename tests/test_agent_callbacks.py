@@ -1,7 +1,7 @@
 """Test suite for enhanced agent communication callbacks."""
 from unittest.mock import Mock, patch
 
-from src.agents.callbacks import (
+from minecraft_coordinator.callbacks import (
     get_configured_callbacks,
     log_agent_thoughts_callback,
     log_tool_invocation_end_callback,
