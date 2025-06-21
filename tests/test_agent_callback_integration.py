@@ -1,16 +1,16 @@
 """Test integration of callbacks with agents."""
 from unittest.mock import Mock, patch
 
-from src.agents.coordinator_agent.agent import create_coordinator_agent
-from src.agents.crafter_agent.agent import create_crafter_agent
-from src.agents.gatherer_agent.agent import create_gatherer_agent
+from minecraft_coordinator.agent import create_coordinator_agent
+from minecraft_crafter.agent import create_crafter_agent
+from minecraft_gatherer.agent import create_gatherer_agent
 
 
 class TestCallbackIntegration:
     """Test that callbacks are properly integrated into agents."""
 
-    @patch("src.agents.coordinator_agent.agent.get_configured_callbacks")
-    @patch("src.agents.coordinator_agent.agent.LlmAgent")
+    @patch("minecraft_coordinator.agent.get_configured_callbacks")
+    @patch("minecraft_coordinator.agent.LlmAgent")
     def test_should_register_callbacks_when_coordinator_created(self, mock_llm_agent, mock_get_callbacks):
         """Coordinator agent should register callbacks during creation."""
         # Arrange
@@ -31,8 +31,8 @@ class TestCallbackIntegration:
         assert "before_tool_callback" in call_kwargs
         assert call_kwargs["before_tool_callback"] == mock_callback
 
-    @patch("src.agents.gatherer_agent.agent.get_configured_callbacks")
-    @patch("src.agents.gatherer_agent.agent.LlmAgent")
+    @patch("minecraft_gatherer.agent.get_configured_callbacks")
+    @patch("minecraft_gatherer.agent.LlmAgent")
     def test_should_register_callbacks_when_gatherer_created(self, mock_llm_agent, mock_get_callbacks):
         """Gatherer agent should register callbacks during creation."""
         # Arrange
@@ -51,8 +51,8 @@ class TestCallbackIntegration:
         assert "after_model_callback" in call_kwargs
         assert call_kwargs["after_model_callback"] == mock_callback
 
-    @patch("src.agents.crafter_agent.agent.get_configured_callbacks")
-    @patch("src.agents.crafter_agent.agent.LlmAgent")
+    @patch("minecraft_crafter.agent.get_configured_callbacks")
+    @patch("minecraft_crafter.agent.LlmAgent")
     def test_should_register_callbacks_when_crafter_created(self, mock_llm_agent, mock_get_callbacks):
         """Crafter agent should register callbacks during creation."""
         # Arrange

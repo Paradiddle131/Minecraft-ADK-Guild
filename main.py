@@ -11,7 +11,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from src.agents.coordinator_agent.agent import create_coordinator_agent
+from minecraft_coordinator.agent import create_coordinator_agent
 from src.bridge.bridge_manager import BridgeManager
 from src.config import get_config, setup_google_ai_credentials
 from src.logging_config import get_logger, setup_logging

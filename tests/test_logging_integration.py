@@ -3,8 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agents.coordinator_agent.agent import create_coordinator_agent
-from src.agents.terminal_logging import setup_terminal_logging
+from minecraft_coordinator.agent import create_coordinator_agent
 from src.bridge.bridge_manager import BridgeManager
 from src.minecraft_bot_controller import BotController
 from src.minecraft_data_service import MinecraftDataService
@@ -25,7 +24,7 @@ class TestLoggingIntegration:
     async def test_should_log_complete_agent_workflow(self, tmp_path):
         """Test that a complete agent workflow produces comprehensive logs."""
         # Setup terminal logging
-        setup_terminal_logging()
+        # setup_terminal_logging() - function no longer exists
 
         # Create log file path (not used in this test, but shows where logs would go)
         # log_file = tmp_path / "test_agent_logs.jsonl"
