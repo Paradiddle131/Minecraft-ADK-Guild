@@ -584,6 +584,19 @@ async def get_inventory(tool_context: Optional[ToolContext] = None) -> Dict[str,
         return {"status": "error", "error": "BotController not initialized"}
 
     try:
+        # Check if bot is connected first
+        if (
+            hasattr(_bot_controller.bridge_manager_instance, "is_connected")
+            and not _bot_controller.bridge_manager_instance.is_connected
+        ):
+            return {
+                "status": "info",
+                "message": "Bot is not connected to Minecraft server.",
+                "items": [],
+                "summary": {},
+                "help": "You're using the ADK Web UI without a Minecraft connection. To interact with a real Minecraft server, please use 'python main.py --interactive' instead.",
+            }
+
         # Add a small delay to ensure inventory is synchronized after crafting
         await asyncio.sleep(0.1)
 
