@@ -111,6 +111,53 @@ MINECRAFT_AGENT_BOT_USERNAME=MinecraftAgent
 MINECRAFT_AGENT_LOG_LEVEL=INFO
 ```
 
+## 🚀 ADK Deployment
+
+The project is now compatible with Google ADK deployment tools. Three agent modules are available for deployment and testing:
+
+### Testing with ADK Web UI
+
+```bash
+# Test the coordinator agent (main entry point)
+adk web
+
+# Access the web UI at http://localhost:8000
+# Select "minecraft_coordinator" from the agent dropdown
+```
+
+The web UI allows you to:
+- Test agent logic without a Minecraft server
+- View tool calls and responses in the Events tab
+- Debug agent decision-making processes
+- Switch between Coordinator, Gatherer, and Crafter agents
+
+**Note**: When using `adk web`, the bot does not connect to Minecraft. Tools will return helpful messages guiding you to use `python main.py --interactive` for full functionality.
+
+### Deploying to Google Cloud
+
+```bash
+# Deploy to Cloud Run
+adk deploy cloud_run minecraft_coordinator
+
+# Deploy to GKE
+adk deploy gke minecraft_coordinator
+
+# Deploy to Agent Engine
+adk deploy agent_engine minecraft_coordinator
+```
+
+### Agent Module Structure
+
+The project includes three ADK-compatible agent modules:
+- `minecraft_coordinator/` - Main orchestrator agent
+- `minecraft_gatherer/` - Resource gathering specialist
+- `minecraft_crafter/` - Item crafting specialist
+
+Each module contains:
+- `__init__.py` - Module initialization
+- `agent.py` - Agent definition with `root_agent` export
+- `.env` - Environment configuration (copied from root)
+
 ### Logging
 
 The system uses `structlog` for structured logging with both console and file output:

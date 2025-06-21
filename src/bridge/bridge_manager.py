@@ -43,9 +43,12 @@ class Command:
 class BridgeManager:
     """Manages communication between Python ADK agents and JavaScript Mineflayer bot"""
 
-    def __init__(self, config: BridgeConfig = None, agent_config: Optional["AgentConfig"] = None):
+    def __init__(
+        self, config: BridgeConfig = None, agent_config: Optional["AgentConfig"] = None, auto_start: bool = True
+    ):
         self.config = config or BridgeConfig()
         self.agent_config = agent_config
+        self.auto_start = auto_start
         self.bot = None
         self.event_handlers = {}
         self.command_queue = asyncio.PriorityQueue(maxsize=self.config.event_queue_size)
@@ -57,6 +60,12 @@ class BridgeManager:
 
     async def initialize(self, bot_script_path: str = None):
         """Initialize the bridge and start the Mineflayer bot"""
+        if not self.auto_start:
+            logger.info("Auto-start disabled - bridge initialized without bot connection")
+            self.is_connected = False
+            self.is_spawned = False
+            return
+
         try:
             import os
 
