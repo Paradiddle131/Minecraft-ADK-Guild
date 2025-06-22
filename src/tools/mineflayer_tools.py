@@ -1289,6 +1289,193 @@ async def toss_stack(slot_index: int, tool_context: Optional[ToolContext] = None
         return {"status": "error", "error": str(e)}
 
 
+async def get_recipes_for_item(item_name: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Get all recipes that can craft the specified item.
+
+    This tool helps agents discover what materials are needed to craft items.
+
+    Args:
+        item_name: Name of the item to find recipes for (e.g., "stairs", "door", "bed")
+
+    Returns:
+        Dictionary with recipe information including required materials
+    """
+    if not _mc_data_service:
+        return {"status": "error", "error": "MinecraftDataService not initialized"}
+
+    try:
+        # Normalize item name
+        normalized_name = item_name
+        if _mc_data_service:
+            # Try fuzzy matching if exact match fails
+            item_data = _mc_data_service.get_item_by_name(item_name)
+            if not item_data:
+                fuzzy_match = _mc_data_service.fuzzy_match_item_name(item_name)
+                if fuzzy_match:
+                    normalized_name = fuzzy_match
+                    item_data = _mc_data_service.get_item_by_name(normalized_name)
+                else:
+                    return {
+                        "status": "error",
+                        "error": f"Item '{item_name}' not found",
+                        "suggestion": "Try using get_items_by_pattern() to discover available items",
+                    }
+            else:
+                normalized_name = item_data.get("name", item_name)
+
+        # Get recipes
+        recipes = _mc_data_service.get_recipes_for_item_name(normalized_name)
+
+        if not recipes:
+            return {
+                "status": "success",
+                "item": normalized_name,
+                "recipes": [],
+                "message": f"No recipes found for {normalized_name}. This item cannot be crafted.",
+            }
+
+        # Process recipes to extract materials
+        processed_recipes = []
+        for i, recipe in enumerate(recipes):
+            materials = _mc_data_service.get_recipe_materials(recipe)
+            result_count = recipe.get("result", {}).get("count", 1)
+            needs_table = _mc_data_service.needs_crafting_table(normalized_name)
+
+            processed_recipes.append(
+                {
+                    "recipe_id": i,
+                    "materials": materials,
+                    "result_count": result_count,
+                    "requires_crafting_table": needs_table,
+                    "type": "shaped" if "inShape" in recipe else "shapeless",
+                }
+            )
+
+        return {
+            "status": "success",
+            "item": normalized_name,
+            "original_query": item_name,
+            "recipes": processed_recipes,
+            "recipe_count": len(processed_recipes),
+            "can_craft_in_inventory": any(not r["requires_crafting_table"] for r in processed_recipes),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get recipes: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+async def get_items_by_pattern(pattern: str, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Find all items matching a pattern.
+
+    This tool allows agents to discover item types when users mention generic terms.
+    For example, "planks" can be resolved to all plank item types.
+
+    Args:
+        pattern: Pattern to search for in item names (e.g., "planks", "_door", "iron")
+
+    Returns:
+        Dictionary with list of matching item names
+    """
+    if not _mc_data_service:
+        return {"status": "error", "error": "MinecraftDataService not initialized"}
+
+    try:
+        all_items = _mc_data_service.get_all_items()
+        pattern_lower = pattern.lower()
+
+        matching_items = []
+        for item in all_items:
+            item_name = item["name"].lower()
+
+            # Check various matching patterns
+            if pattern_lower in item_name:
+                matching_items.append(item["name"])
+            elif item_name.endswith(pattern_lower):
+                matching_items.append(item["name"])
+            elif pattern_lower.startswith("_") and item_name.endswith(pattern_lower[1:]):
+                matching_items.append(item["name"])
+            elif pattern_lower.endswith("s") and pattern_lower[:-1] in item_name:
+                # Handle plurals
+                matching_items.append(item["name"])
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_items = []
+        for item in matching_items:
+            if item not in seen:
+                seen.add(item)
+                unique_items.append(item)
+
+        logger.info(f"Found {len(unique_items)} items matching pattern '{pattern}'")
+
+        return {"status": "success", "items": unique_items, "count": len(unique_items), "pattern": pattern}
+
+    except Exception as e:
+        logger.error(f"Failed to get items by pattern: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+async def follow_player(username: str, range: int = 64, tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Follow a player continuously.
+
+    The bot will continuously follow the specified player, maintaining the given distance.
+    Use stop_following() to stop following.
+
+    Args:
+        username: Player username to follow
+        range: Maximum distance to maintain from player (default 64)
+
+    Returns:
+        Dictionary with follow status
+    """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+
+    try:
+        result = await _bot_controller.follow_player(username, range)
+
+        if result.get("status") == "success":
+            logger.info(f"Now following player {username} with range {range}")
+            # Update state if context provided
+            if tool_context and tool_context.state is not None:
+                tool_context.state["minecraft.following_player"] = username
+                tool_context.state["minecraft.follow_range"] = range
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to follow player: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+async def stop_following(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
+    """Stop following any player.
+
+    Returns:
+        Dictionary with stop status
+    """
+    if not _bot_controller:
+        return {"status": "error", "error": "BotController not initialized"}
+
+    try:
+        result = await _bot_controller.stop_following()
+
+        if result.get("status") == "success":
+            logger.info("Stopped following player")
+            # Clear state if context provided
+            if tool_context and tool_context.state is not None:
+                # Remove keys by setting to None or deleting them
+                if "minecraft.following_player" in tool_context.state:
+                    del tool_context.state["minecraft.following_player"]
+                if "minecraft.follow_range" in tool_context.state:
+                    del tool_context.state["minecraft.follow_range"]
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to stop following: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 def create_mineflayer_tools(bot_controller: BotController, mc_data_service: MinecraftDataService) -> List:
     """Create enhanced Mineflayer tools with BotController and MinecraftDataService integration.
 
@@ -1315,8 +1502,12 @@ def create_mineflayer_tools(bot_controller: BotController, mc_data_service: Mine
         find_blocks_nearby,
         get_nearby_players,
         get_inventory,
+        get_recipes_for_item,
+        get_items_by_pattern,
         craft_item,
         send_chat,
         toss_item,
         toss_stack,
+        follow_player,
+        stop_following,
     ]
