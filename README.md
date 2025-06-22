@@ -8,11 +8,51 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)](https://python.org)
 
 <div align="center">
-  <img src="docs/minecraft-adk-guild-demo.gif" alt="Minecraft ADK Guild Demo" width="600">
-  <p><i>Watch AI agents collaborate to gather resources and craft items autonomously</i></p>
+  <p><i>Watch AI agents collaborate to <b>gather resources</b>, <b>craft items</b>, and <b>place blocks</b> autonomously</i></p>
 </div>
 
-### 🎯 Key Features
+## 🎬 Demo
+
+[![Watch the video](https://img.youtube.com/vi/5K_-VV1gMcE/maxresdefault.jpg)](https://youtu.be/5K_-VV1gMcE)
+
+## 📚 Table of Contents
+
+- [🎬 Demo](#-demo)
+- [🎯 Key Features](#-key-features)
+- [🎯 The Challenge](#-the-challenge)
+- [💡 Our Solution: AI Agent Guild](#-our-solution-ai-agent-guild)
+- [🚀 See It In Action](#-see-it-in-action)
+  - [🎮 Interactive Mode - Persistent AI Memory](#-interactive-mode---persistent-ai-memory)
+- [🏗️ Architecture](#️-architecture)
+  - [💡 ADK Integration Highlights](#-adk-integration-highlights)
+  - [🧠 Agent Intelligence Layers](#-agent-intelligence-layers)
+  - [🌉 Bridge Innovation](#-bridge-innovation)
+- [✨ Advanced Features](#-advanced-features)
+  - [🤖 Multi-Agent Coordination](#-multi-agent-coordination)
+  - [🎯 Intelligent Task Planning](#-intelligent-task-planning)
+  - [🔧 Production-Ready Infrastructure](#-production-ready-infrastructure)
+  - [🌐 Multiple Interfaces](#-multiple-interfaces)
+- [📁 Project Structure](#-project-structure)
+- [📦 Installation](#-installation)
+  - [Prerequisites](#prerequisites)
+  - [Quick Start](#quick-start)
+  - [🧪 Try Agent Logic Without Minecraft Server](#-try-agent-logic-without-minecraft-server)
+  - [🎮 With Minecraft Server](#-with-minecraft-server)
+  - [🐳 Docker Installation](#-docker-installation)
+- [🎮 Usage Examples](#-usage-examples)
+  - [Basic Commands](#basic-commands)
+  - [Advanced Workflows](#advanced-workflows)
+- [🔬 Technical Deep Dive](#-technical-deep-dive)
+  - [Google ADK Patterns Used](#google-adk-patterns-used)
+  - [Performance & Technical Metrics](#performance--technical-metrics)
+  - [🔄 Interactive Agent Loop Architecture](#-interactive-agent-loop-architecture)
+- [🛠️ Extending the Guild](#️-extending-the-guild)
+- [🤝 Contributing](#-contributing)
+- [📈 Future Vision](#-future-vision)
+- [📄 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
+
+## 🎯 Key Features
 - **3 Specialized Agents** working in perfect coordination through Google ADK
 - **<3s** response time for simple tasks, scales with complexity
 - **Smart dependency resolution** for multi-step crafting workflows
@@ -80,7 +120,7 @@ Minecraft Agent> what's in my inventory?
 Your inventory contains: 32 oak planks, 32 sticks
 ```
 
-## 🏗️ Architecture: Three-Layer Intelligence
+## 🏗️ Architecture
 ![Architecture Diagram](docs/diagrams/minecraft-adk-flow.svg)
 
 ### 💡 ADK Integration Highlights
@@ -119,9 +159,9 @@ Our **Python↔JavaScript Bridge** enables:
 - Command queuing and prioritization
 - Automatic reconnection and error recovery
 
-## ✨ Key Features
+## ✨ Advanced Features
 
-### 🤖 Advanced Multi-Agent Coordination
+### 🤖 Multi-Agent Coordination
 - **AgentTool Pattern**: Sub-agents are tools that return structured results
 - **Shared State**: Agents communicate through persistent session state
 - **Smart Delegation**: Coordinator knows which agent to use for each task
@@ -206,6 +246,10 @@ adk web
 # Select "minecraft_coordinator" from dropdown
 # Try commands like "craft a pickaxe" to see agent coordination
 ```
+
+<img src="docs/adk_web.png" alt="ADK Web UI showing agent coordination" height="800">
+
+**Note:** The ADK Web UI cannot fully connect the bot to an actual Minecraft server, but it demonstrates agent interactions, tool calls, and decision-making processes as shown in the image above. For full bot functionality, use `python main.py --interactive`.
 
 ### 🎮 With Minecraft Server
 
