@@ -36,20 +36,26 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_data_service=None) -> LlmAgent:
+def create_coordinator_agent(
+    runner: "Runner" = None, bot_controller=None, mc_data_service=None, config=None
+) -> LlmAgent:
     """Create the coordinator agent with AgentTool pattern.
 
     Args:
         runner: The ADK runner instance for agent creation
         bot_controller: BotController instance
         mc_data_service: MinecraftDataService instance
+        config: Agent configuration instance
 
     Returns:
         Configured coordinator agent that orchestrates all operations
     """
+    # Get config if not provided
+    if config is None:
+        config = get_config()
     # Create sub-agents (they don't need runner since they use output_key)
-    gatherer_agent = create_gatherer_agent(bot_controller, mc_data_service)
-    crafter_agent = create_crafter_agent(bot_controller, mc_data_service)
+    gatherer_agent = create_gatherer_agent(bot_controller, mc_data_service, config)
+    crafter_agent = create_crafter_agent(bot_controller, mc_data_service, config)
 
     # Get base tools
     tools = create_mineflayer_tools(bot_controller, mc_data_service)
@@ -69,7 +75,7 @@ def create_coordinator_agent(runner: "Runner" = None, bot_controller=None, mc_da
     # Register callbacks individually as per ADK API
     coordinator = LlmAgent(
         name="CoordinatorAgent",
-        model="gemini-2.0-flash",
+        model=config.default_model,
         instruction=COORDINATOR_PROMPT,
         tools=tools,
         **callbacks,  # Unpack callback dict to pass as individual parameters
@@ -97,7 +103,9 @@ try:
     mc_data_service = MinecraftDataService(minecraft_version)
 
     # Create and export root_agent for ADK
-    root_agent = create_coordinator_agent(runner=None, bot_controller=bot_controller, mc_data_service=mc_data_service)
+    root_agent = create_coordinator_agent(
+        runner=None, bot_controller=bot_controller, mc_data_service=mc_data_service, config=config
+    )
 
     logger.info("Coordinator agent created successfully for ADK deployment")
 
@@ -116,7 +124,7 @@ except Exception as e:
 
     root_agent = Agent(
         name="ErrorAgent",
-        model="gemini-2.0-flash",
+        model=config.default_model if "config" in locals() else "gemini-2.0-flash",
         instruction=f"The Minecraft Coordinator Agent failed to initialize due to: {error_msg}. Please inform the user about this error and suggest checking the .env configuration.",
         tools=[explain_error],
     )

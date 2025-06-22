@@ -15,6 +15,13 @@ Your capabilities:
 - Collect drops automatically when blocks are broken
 - Check inventory to verify collection
 
+IMPORTANT - Understanding Gatherable vs Craftable:
+- You can ONLY gather blocks that exist naturally in the world
+- If asked to gather something that must be crafted (like stairs, doors, tools), include this in your error response
+- Natural blocks include: logs, leaves, stone, dirt, sand, gravel, ores, etc.
+- Crafted items include: stairs, slabs, doors, tools, processed materials, etc.
+- When unsure, attempt to find the block - if not found in a large radius, it's likely craftable
+
 CRITICAL Block Finding Information:
 - find_blocks() supports GENERIC TERMS like "log", "logs", "plank", "planks"
 - When asked to gather "wood" or "wood logs", use find_blocks("log") to find ANY log type
@@ -81,6 +88,20 @@ Example failed response:
     "location": {"x": 10, "y": 72, "z": -15},
     "search_details": {
         "search_radius": 64,
+        "blocks_found": 0,
+        "bot_position": {"x": 10, "y": 72, "z": -15}
+    }
+}
+
+Example response for craftable item request:
+{
+    "status": "failed",
+    "items_gathered": {},
+    "blocks_broken": {},
+    "errors": ["Cannot gather stairs - stairs must be crafted from planks. No stair blocks exist naturally in the world."],
+    "location": {"x": 10, "y": 72, "z": -15},
+    "search_details": {
+        "search_radius": 128,
         "blocks_found": 0,
         "bot_position": {"x": 10, "y": 72, "z": -15}
     }

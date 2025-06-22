@@ -28,23 +28,27 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def create_crafter_agent(bot_controller=None, mc_data_service=None) -> LlmAgent:
+def create_crafter_agent(bot_controller=None, mc_data_service=None, config=None) -> LlmAgent:
     """Create the crafter agent with structured output.
 
     Args:
         bot_controller: BotController instance
         mc_data_service: MinecraftDataService instance
+        config: Agent configuration instance
 
     Returns:
         Configured crafter agent that returns results via output_key
     """
+    # Get config if not provided
+    if config is None:
+        config = get_config()
     # Get configured callbacks
     callbacks = get_configured_callbacks()
 
     # Register callbacks individually as per ADK API
     crafter = LlmAgent(
         name="CrafterAgent",
-        model="gemini-2.0-flash",
+        model=config.default_model,
         instruction=CRAFTER_PROMPT,
         output_key="crafting_result",  # Structured output to state
         tools=create_mineflayer_tools(bot_controller, mc_data_service),
@@ -74,7 +78,7 @@ try:
 
     # Create crafter agent for standalone testing
     # Note: In production, crafter is used as an AgentTool by coordinator
-    root_agent = create_crafter_agent(bot_controller=bot_controller, mc_data_service=mc_data_service)
+    root_agent = create_crafter_agent(bot_controller=bot_controller, mc_data_service=mc_data_service, config=config)
 
     logger.info("Crafter agent created successfully for ADK deployment")
 
@@ -93,7 +97,7 @@ except Exception as e:
 
     root_agent = Agent(
         name="ErrorAgent",
-        model="gemini-2.0-flash",
+        model=config.default_model if "config" in locals() else "gemini-2.0-flash",
         instruction=f"The Minecraft Crafter Agent failed to initialize due to: {error_msg}. Please inform the user about this error and suggest checking the .env configuration.",
         tools=[explain_error],
     )

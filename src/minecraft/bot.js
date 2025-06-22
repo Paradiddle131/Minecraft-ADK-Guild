@@ -688,13 +688,18 @@ class MinecraftBot {
                 }
             },
 
-            'pathfinder.follow': async ({ username, range = 3 }) => {
+            'pathfinder.follow': async ({ username, range = 64 }) => {
                 const player = this.bot.players[username];
                 if (!player) throw new Error(`Player ${username} not found`);
 
+                if (!player.entity) {
+                    throw new Error(`Player ${username} is not visible or too far away`);
+                }
+
                 const goal = new goals.GoalFollow(player.entity, range);
                 this.bot.pathfinder.setGoal(goal, true);
-                return { following: username };
+                logger.info(`Now following ${username} with range ${range}`);
+                return { following: username, range: range };
             },
 
             'pathfinder.stop': async () => {
@@ -972,62 +977,129 @@ class MinecraftBot {
                         };
                     }
 
-                    // Check if we need a crafting table - assume any recipe not craftable in 2x2 needs table
-                    // Python MinecraftDataService now determines this
+                    // First, check recipes without crafting table to see if we need one
+                    const inventoryRecipes = this.bot.recipesFor(item.id, null, 1, null);
                     let craftingTable = null;
+                    let needsCraftingTable = false;
 
-                    // Try to find a crafting table nearby - let Python decide if needed
-                    craftingTable = this.bot.findBlock({
-                        matching: this.bot.registry.blocksByName.crafting_table.id,
-                        maxDistance: 4
-                    });
+                    // If no recipes in inventory, we need a crafting table
+                    if (!inventoryRecipes || inventoryRecipes.length === 0) {
+                        needsCraftingTable = true;
+                        logger.info(`${normalizedName} requires a crafting table`);
 
-                    // Get recipes for this item
+                        // Find a crafting table nearby
+                        craftingTable = this.bot.findBlock({
+                            matching: this.bot.registry.blocksByName.crafting_table.id,
+                            maxDistance: 32
+                        });
+
+                        if (!craftingTable) {
+                            // Check if we have a crafting table in inventory to place
+                            const hasCraftingTable = this.bot.inventory.items().some(item => item.name === 'crafting_table');
+
+                            if (hasCraftingTable) {
+                                return {
+                                    success: false,
+                                    error: `No crafting table found nearby. ${normalizedName} requires a crafting table to craft. You have a crafting table in your inventory - please place it first.`,
+                                    has_crafting_table_item: true
+                                };
+                            } else {
+                                return {
+                                    success: false,
+                                    error: `No crafting table found nearby. ${normalizedName} requires a crafting table to craft. You need to craft or find a crafting table first.`,
+                                    has_crafting_table_item: false
+                                };
+                            }
+                        }
+
+                        logger.info(`Found crafting table at (${craftingTable.position.x}, ${craftingTable.position.y}, ${craftingTable.position.z})`);
+
+                        // Move close to the crafting table
+                        const tablePos = craftingTable.position;
+                        const goal = new goals.GoalNear(tablePos.x, tablePos.y, tablePos.z, 3);
+
+                        try {
+                            logger.info(`Moving to crafting table...`);
+                            await this.bot.pathfinder.goto(goal);
+                            logger.info(`Reached crafting table`);
+                        } catch (moveError) {
+                            logger.error(`Failed to reach crafting table: ${moveError}`);
+                            return {
+                                success: false,
+                                error: `Could not reach crafting table: ${moveError.message}`
+                            };
+                        }
+                    }
+
+                    // Get recipes (with crafting table if needed)
                     const recipes = this.bot.recipesFor(item.id, null, 1, craftingTable);
 
                     if (!recipes || recipes.length === 0) {
                         return {
                             success: false,
-                            error: `No recipe found for ${itemName}`
+                            error: `No recipe found for ${normalizedName}`,
+                            needs_crafting_table: needsCraftingTable
                         };
                     }
 
                     // Use the first available recipe
                     const recipe = recipes[0];
 
-                    // Check if we have the required materials
-                    const missingMaterials = await this.checkMissingMaterials(recipe, count);
+                    // Calculate how many times to execute the recipe
+                    const recipeOutputCount = recipe.result?.count || 1;
+                    const timesToCraft = Math.ceil(count / recipeOutputCount);
+                    const actualOutputCount = timesToCraft * recipeOutputCount;
+
+                    logger.info(`Recipe produces ${recipeOutputCount} items per craft. Need ${count} items, will craft ${timesToCraft} times to get ${actualOutputCount} items.`);
+
+                    // Check if we have the required materials for the number of times we need to craft
+                    const missingMaterials = await this.checkMissingMaterials(recipe, timesToCraft);
 
                     if (Object.keys(missingMaterials).length > 0) {
                         return {
                             success: false,
-                            error: `Cannot craft ${itemName}: missing materials`,
-                            missing_materials: missingMaterials
+                            error: `Cannot craft ${count} ${normalizedName}: missing materials`,
+                            missing_materials: missingMaterials,
+                            recipe_info: {
+                                output_per_craft: recipeOutputCount,
+                                times_to_craft: timesToCraft,
+                                total_output: actualOutputCount
+                            }
                         };
                     }
 
                     // Actually craft the item
                     try {
-                        await this.bot.craft(recipe, count, craftingTable);
-                        logger.info(`Successfully crafted ${count} ${itemName}`);
+                        await this.bot.craft(recipe, timesToCraft, craftingTable);
+                        logger.info(`Successfully crafted ${actualOutputCount} ${normalizedName} (${timesToCraft} crafts)`);
 
                         return {
                             success: true,
-                            crafted: count,
-                            recipe: itemName,
-                            message: `Crafted ${count} ${itemName}`
+                            crafted: actualOutputCount,
+                            recipe: normalizedName,
+                            message: `Crafted ${actualOutputCount} ${normalizedName}`,
+                            used_crafting_table: needsCraftingTable,
+                            recipe_info: {
+                                output_per_craft: recipeOutputCount,
+                                times_crafted: timesToCraft
+                            }
                         };
                     } catch (craftError) {
-                        logger.error(`Crafting failed for ${itemName}:`, craftError);
+                        logger.error(`Crafting failed for ${normalizedName}:`, craftError);
 
                         // Try to provide more specific error info
                         if (craftError.message.includes('materials')) {
                             // Re-check materials for better error reporting
-                            const missing = await this.checkMissingMaterials(recipe, count);
+                            const missing = await this.checkMissingMaterials(recipe, timesToCraft);
                             return {
                                 success: false,
                                 error: `Crafting failed: ${craftError.message}`,
-                                missing_materials: missing
+                                missing_materials: missing,
+                                recipe_info: {
+                                    output_per_craft: recipeOutputCount,
+                                    times_to_craft: timesToCraft,
+                                    total_output: actualOutputCount
+                                }
                             };
                         }
 
@@ -1171,6 +1243,15 @@ class MinecraftBot {
         // Count required materials
         const required = {};
 
+        // Debug logging
+        logger.info(`Checking materials for recipe:`, {
+            resultItem: this.bot.registry.items[recipe.result?.id || recipe.result]?.name,
+            resultCount: recipe.result?.count || 1,
+            requestedCount: count,
+            hasInShape: !!recipe.inShape,
+            hasIngredients: !!recipe.ingredients
+        });
+
         // Handle both shaped and shapeless recipes
         const ingredients = recipe.inShape || recipe.ingredients || [];
 
@@ -1178,20 +1259,29 @@ class MinecraftBot {
             if (Array.isArray(row)) {
                 // Shaped recipe with rows
                 for (const slot of row) {
-                    if (slot && slot.id !== -1) {
-                        const item = this.bot.registry.items[slot.id];
-                        if (item) {
-                            const totalNeeded = (slot.count || 1) * count;
-                            required[item.name] = (required[item.name] || 0) + totalNeeded;
+                    if (slot !== null && slot !== undefined) {
+                        // Handle both object format {id: X} and direct ID format
+                        const itemId = typeof slot === 'object' ? slot.id : slot;
+                        if (itemId && itemId !== -1) {
+                            const item = this.bot.registry.items[itemId];
+                            if (item) {
+                                const slotCount = typeof slot === 'object' ? (slot.count || 1) : 1;
+                                const totalNeeded = slotCount * count;
+                                required[item.name] = (required[item.name] || 0) + totalNeeded;
+                            }
                         }
                     }
                 }
-            } else if (row && row.id !== -1) {
+            } else if (row !== null && row !== undefined) {
                 // Shapeless recipe or single item
-                const item = this.bot.registry.items[row.id];
-                if (item) {
-                    const totalNeeded = (row.count || 1) * count;
-                    required[item.name] = (required[item.name] || 0) + totalNeeded;
+                const itemId = typeof row === 'object' ? row.id : row;
+                if (itemId && itemId !== -1) {
+                    const item = this.bot.registry.items[itemId];
+                    if (item) {
+                        const rowCount = typeof row === 'object' ? (row.count || 1) : 1;
+                        const totalNeeded = rowCount * count;
+                        required[item.name] = (required[item.name] || 0) + totalNeeded;
+                    }
                 }
             }
         }
@@ -1201,6 +1291,14 @@ class MinecraftBot {
         for (const item of inventory) {
             have[item.name] = (have[item.name] || 0) + item.count;
         }
+
+        // Debug logging
+        logger.info(`Material requirements:`, {
+            required,
+            have,
+            recipeOutput: recipe.result?.count || 1,
+            craftingCount: count
+        });
 
         // Calculate missing
         for (const [itemName, needCount] of Object.entries(required)) {

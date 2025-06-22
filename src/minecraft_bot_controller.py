@@ -237,15 +237,12 @@ class BotController:
             logger.error(f"Equip item failed: {e}")
             return {"status": "error", "error": str(e)}
 
-    async def craft_item(
-        self, recipe_id: int, count: int, crafting_table_block_or_none: Optional[Any]
-    ) -> Dict[str, Any]:
-        """Craft an item using a recipe
+    async def craft_item(self, recipe_name: str, count: int = 1) -> Dict[str, Any]:
+        """Craft an item using a recipe name
 
         Args:
-            recipe_id: Recipe ID to use
+            recipe_name: Name of the item to craft
             count: Number of items to craft
-            crafting_table_block_or_none: Crafting table block object or None for inventory crafting
 
         Returns:
             Dict with craft result
@@ -255,10 +252,22 @@ class BotController:
             return conn_error
 
         try:
-            # For now, use the existing craft command which takes item name
-            # This would need to be updated to use recipe_id in the future
-            result = await self.bridge_manager_instance.execute_command("craft", recipe="unknown", count=count)
-            return result
+            # Execute the craft command with item name
+            result = await self.bridge_manager_instance.execute_command("craft", recipe=recipe_name, count=count)
+
+            # Handle proxy object results
+            if result and hasattr(result, "__dict__"):
+                # Convert proxy object to dict
+                return {
+                    "status": "success" if getattr(result, "success", False) else "error",
+                    "crafted": getattr(result, "crafted", 0),
+                    "recipe": getattr(result, "recipe", recipe_name),
+                    "message": getattr(result, "message", ""),
+                    "error": getattr(result, "error", None),
+                    "used_crafting_table": getattr(result, "used_crafting_table", False),
+                }
+            else:
+                return result
         except Exception as e:
             logger.error(f"Craft item failed: {e}")
             return {"status": "error", "error": str(e)}
@@ -588,4 +597,52 @@ class BotController:
 
         except Exception as e:
             logger.error(f"Toss stack failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def follow_player(self, username: str, range: int = 64) -> Dict[str, Any]:
+        """Follow a player continuously
+
+        Args:
+            username: Player username to follow
+            range: Maximum distance to maintain from player (default 64)
+
+        Returns:
+            Dict with follow status
+        """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
+        try:
+            result = await self.bridge_manager_instance.execute_command(
+                "pathfinder.follow", username=username, range=range
+            )
+            # Return the actual result from JavaScript
+            if result:
+                return {"status": "success", "following": username, "range": range, "result": result}
+            else:
+                return {"status": "success", "following": username, "range": range}
+        except Exception as e:
+            logger.error(f"Follow player failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def stop_following(self) -> Dict[str, Any]:
+        """Stop following any player
+
+        Returns:
+            Dict with stop status
+        """
+        conn_error = self._check_connection()
+        if conn_error:
+            return conn_error
+
+        try:
+            result = await self.bridge_manager_instance.execute_command("pathfinder.stop")
+            # Return the actual result from JavaScript
+            if result:
+                return {"status": "success", "stopped": True, "result": result}
+            else:
+                return {"status": "success", "stopped": True}
+        except Exception as e:
+            logger.error(f"Stop following failed: {e}")
             return {"status": "error", "error": str(e)}
